@@ -1,2 +1,10 @@
+[target.thumbv7em-none-eabi]
+runner = "qemu-system-arm -machine olimex-stm32-h405 -nographic -semihosting-config enable=on,target=native -kernel"
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+]
+
 [build]
-target = "thumbv7em-none-eabihf"
+target = "thumbv7em-none-eabi"
