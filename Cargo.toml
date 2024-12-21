@@ -1,0 +1,9 @@
+[package]
+name = "zeroflight"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+panic-probe = { version = "0.3.2", features = ["defmt"] }
+rtic = { version = "2.1.2", features = ["thumbv7-backend"] }
+stm32f4xx-hal = { version = "0.22.1", features = ["stm32f405"] }
