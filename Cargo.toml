@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cortex-m = "0.7.7"
-cortex-m-semihosting = "0.5.0"
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 defmt = "0.3.10"
-panic-probe = { version = "0.3.2", features = ["defmt"] }
-panic-semihosting = { version = "0.6.0", features = ["exit"] }
+defmt-rtt = "0.4.1"
+panic-halt = "1.0.0"
 rtic = { version = "2.1.2", features = ["thumbv7-backend"] }
-stm32f4xx-hal = { version = "0.22.1", features = ["stm32f405"] }
+rtic-monotonics = { version = "2.0.3", features = ["cortex-m-systick"] }
+stm32f1xx-hal = { version = "0.10.0", features = ["stm32f103"] }

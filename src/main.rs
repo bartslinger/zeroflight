@@ -4,63 +4,71 @@
 #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
-use panic_semihosting as _;
+use defmt_rtt as _;
+use panic_halt as _;
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1])]
+#[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [USART1])]
 mod app {
-    use stm32f4xx_hal::gpio::{self, Output, PushPull};
-    use cortex_m_semihosting::{debug, hprintln};
-    use defmt;
+    use stm32f1xx_hal::gpio::{self, Output, PushPull};
+    // use cortex_m_semihosting::{debug, hprintln};
+    use rtic_monotonics::systick::prelude::*;
+
+    systick_monotonic!(Mono, 100);
 
     #[shared]
     struct Shared {}
 
     #[local]
     struct Local {
-        led: gpio::PA13<Output<PushPull>>,
+        led: gpio::PC13<Output<PushPull>>,
     }
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        hprintln!("init");
-        defmt::info!("Test");
-        use stm32f4xx_hal::prelude::*;
+        defmt::info!("init");
+        use stm32f1xx_hal::prelude::*;
 
-        // Setup clocks
-        hprintln!("clock setup");
+        Mono::start(cx.core.SYST, 72_000_000);
+        defmt::info!("clock setup");
+        let mut flash = cx.device.FLASH.constrain();
         let rcc = cx.device.RCC.constrain();
+        let _clocks = rcc
+            .cfgr
+            .use_hse(8.MHz()) // Use an external 8 MHz crystal oscillator
+            .sysclk(72.MHz()) // Set system clock to 72 MHz
+            .pclk1(36.MHz()) // Set APB1 clock (max 36 MHz)
+            .pclk2(72.MHz()) // Set APB2 clock (max 72 MHz)
+            .freeze(&mut flash.acr);
 
-        // let clocks = rcc.cfgr
-        //     .use_hse(8.MHz()) // Use the external 8 MHz HSE
-        //     .sysclk(168.MHz()) // Set system clock to 168 MHz
-        //     .hclk(168.MHz())   // Set HCLK to 168 MHz
-        //     .pclk1(42.MHz())   // Set APB1 clock to 42 MHz
-        //     .pclk2(84.MHz())   // Set APB2 clock to 84 MHz
-        //     .freeze();         // Apply and freeze the configuration
-        // let clocks = rcc.cfgr.use_hsi().freeze();
+        let mut gpioc = cx.device.GPIOC.split();
+        let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
+        led.set_low();
 
-        let gpioa = cx.device.GPIOA.split();
-        let led = gpioa.pa13.into_push_pull_output();
+        defmt::info!("init done");
 
-        hprintln!("init done");
-
-        (Shared {}, Local {led})
+        (Shared {}, Local { led })
     }
 
     #[idle]
-    fn idle(cx: idle::Context) -> ! {
-        hprintln!("idle");
-        once_off_task::spawn().ok();
+    fn idle(_cx: idle::Context) -> ! {
+        blink::spawn().ok();
 
         loop {
-            hprintln!("loop");
+            // defmt::info!("loop");
             cortex_m::asm::nop();
-            debug::exit(debug::EXIT_SUCCESS); // Exit QEMU simulator
         }
     }
 
-    #[task(priority = 1)]
-    async fn once_off_task(cx: once_off_task::Context) {
-        hprintln!("once_off_task");
+    #[task(priority = 1, local = [led])]
+    async fn blink(cx: blink::Context) {
+        defmt::info!("blink task");
+        loop {
+            Mono::delay(1000.millis()).await;
+            cx.local.led.set_high();
+            defmt::info!("LED off");
+            Mono::delay(1000.millis()).await;
+            cx.local.led.set_low();
+            defmt::info!("LED on");
+        }
     }
 }
