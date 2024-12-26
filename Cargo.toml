@@ -10,6 +10,6 @@ defmt-rtt = "0.4.1"
 panic-halt = "1.0.0"
 rtic = { version = "2.1.2", features = ["thumbv7-backend"] }
 rtic-monotonics = { version = "2.0.3", features = ["cortex-m-systick"] }
-stm32f1xx-hal = { version = "0.10.0", features = ["stm32f103"] }
+stm32f4xx-hal = { version = "0.22.1", features = ["stm32f405"] }
 usb-device = "0.2.8"
 usbd-serial = "0.1.1"
