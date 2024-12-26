@@ -7,12 +7,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="nicer log output without line numbers">
-      <change beforePath="$PROJECT_DIR$/.cargo/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/.cargo/config.toml" afterDir="false" />
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="run periodic loop on speedybee">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/memory.x" beforeDir="false" afterPath="$PROJECT_DIR$/memory.x" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -117,7 +115,7 @@
       <workItem from="1735132951054" duration="2582000" />
       <workItem from="1735136574293" duration="1966000" />
       <workItem from="1735140090097" duration="7608000" />
-      <workItem from="1735200342411" duration="4049000" />
+      <workItem from="1735200342411" duration="6928000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -151,7 +149,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735202775733</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="run periodic loop on speedybee">
+      <option name="closed" value="true" />
+      <created>1735210387330</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1735210387330</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -161,6 +167,7 @@
     <MESSAGE value="blinky on stm32f103 blue pill" />
     <MESSAGE value="usb cdc-acm device with led blinking at higher priority" />
     <MESSAGE value="nicer log output without line numbers" />
-    <option name="LAST_COMMIT_MESSAGE" value="nicer log output without line numbers" />
+    <MESSAGE value="run periodic loop on speedybee" />
+    <option name="LAST_COMMIT_MESSAGE" value="run periodic loop on speedybee" />
   </component>
 </project>
