@@ -89,7 +89,7 @@ mod app {
         let mut buf = [0];
         // who am i?
         let res = i2c.write_read(0x76_u8, &[0x0D], &mut buf);
-        if let Err(e) = res {
+        if let Err(_) = res {
             defmt::error!("I2C write_read error");
         }
 
@@ -108,7 +108,7 @@ mod app {
         let miso = gpioa.pa6.into_alternate();
         let mosi = gpioa.pa7.into_alternate();
 
-        let mut spi1 = stm32f4xx_hal::spi::Spi::new(
+        let spi1 = stm32f4xx_hal::spi::Spi::new(
             cx.device.SPI1,
             (sck, miso, mosi),
             stm32f4xx_hal::spi::Mode {
@@ -120,20 +120,38 @@ mod app {
         );
 
         let mut cs = gpioa.pa4.into_push_pull_output();
-        cs.set_high(); // deactivate chip select
-        cortex_m::asm::delay(clocks.sysclk().raw() / 100);
-        let start = dwt.cyccnt.read();
+        cs.set_high();
+        // delay
+        cortex_m::asm::delay(100_000);
         cs.set_low();
-        let mut buf = [0x75 | 0x80, 0x00];
-        let result = spi1.transfer_in_place(&mut buf);
-        cs.set_high(); // deactivate chip select
-        let end = dwt.cyccnt.read();
-        let diff = end.wrapping_sub(start);
-        if let Err(e) = result {
-            defmt::error!("SPI transfer error");
+
+        defmt::info!("IMU initializing...");
+        let mut imu = icm42688p::Icm42688p::new(spi1, cs).expect("IMU initialization failed");
+        imu.unselect_chip().expect("IMU deselect chip failed");
+        defmt::info!("IMU initialized");
+
+        cortex_m::asm::delay(10_000_000);
+
+        loop {
+            let start = dwt.cyccnt.read();
+            imu.select_chip().expect("IMU select chip failed");
+            // let temperature = imu.temperature_celsius().expect("IMU read failed");
+            // let accel_odr = imu.accel_odr().expect("IMU read failed");
+            // let device_id = imu.device_id().expect("IMU read failed");
+            let accel = imu.acceleration().expect("IMU read failed");
+            // let power_mode = imu.power_mode().expect("IMU read failed");
+            imu.unselect_chip().expect("IMU unselect chip failed");
+
+            let end = dwt.cyccnt.read();
+            let diff = end.wrapping_sub(start);
+            // defmt::info!("IMU Temp: {}", temperature);
+            // defmt::info!("IMU Accel ODR: {:02x}", accel_odr as u8);
+            // defmt::info!("IMU WHO_AM_I: {:02x}", device_id);
+            defmt::info!("IMU acceleration: {:?}", accel);
+            // defmt::info!("IMU Power: {}", power_mode as u8);
+            defmt::info!("IMU initialization cycle count: {}", diff);
+            cortex_m::asm::delay(2_520_000);
         }
-        defmt::info!("WHO_AM_I: {:02x} {:02x}", buf[0], buf[1]);
-        defmt::info!("IMU initialization cycle count: {}", diff);
 
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
