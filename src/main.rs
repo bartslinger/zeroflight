@@ -35,7 +35,6 @@ mod app {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
         defmt::info!("init");
 
-        Mono::start(cx.core.SYST, 168_000_000);
         defmt::info!("Clock setup");
         let rcc = cx.device.RCC.constrain();
         let clocks = rcc.cfgr.sysclk(168.MHz()).require_pll48clk().freeze();
@@ -44,6 +43,8 @@ mod app {
         defmt::info!("PCLK1: {}", clocks.pclk1().raw());
         defmt::info!("PCLK2: {}", clocks.pclk2().raw());
         assert!(clocks.is_pll48clk_valid());
+
+        let mut delay = cx.core.SYST.delay(&clocks);
 
         // -----------------------------------------------------------------------------------------
         // Enable cycle counter for counting clock ticks
@@ -104,53 +105,158 @@ mod app {
         let gpioa = cx.device.GPIOA.split();
 
         let sck = gpioa.pa5.into_alternate();
-
         let miso = gpioa.pa6.into_alternate();
         let mosi = gpioa.pa7.into_alternate();
 
-        let spi1 = stm32f4xx_hal::spi::Spi::new(
+        let mut spi1 = stm32f4xx_hal::spi::Spi::new(
             cx.device.SPI1,
             (sck, miso, mosi),
             stm32f4xx_hal::spi::Mode {
                 polarity: stm32f4xx_hal::spi::Polarity::IdleHigh,
                 phase: stm32f4xx_hal::spi::Phase::CaptureOnSecondTransition,
             },
-            1.MHz(),
+            100.kHz(),
             &clocks,
         );
 
         let mut cs = gpioa.pa4.into_push_pull_output();
         cs.set_high();
         // delay
-        cortex_m::asm::delay(100_000);
-        cs.set_low();
+        delay.delay_ms(1);
 
         defmt::info!("IMU initializing...");
-        let mut imu = icm42688p::Icm42688p::new(spi1, cs).expect("IMU initialization failed");
-        imu.unselect_chip().expect("IMU deselect chip failed");
-        defmt::info!("IMU initialized");
 
-        cortex_m::asm::delay(10_000_000);
+        // disable power on accel and gyro for configuration (see datasheet 12.9)
+        cs.set_low();
+        let mut buf = [0x4E, 0x00];
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        // min 200us sleep recommended
+        delay.delay_us(300);
 
+        // configure the FIFO
+        cs.set_low();
+        let mut buf = [0x16, 0x80]; // FIFO_CONFIG STOP-on-full
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        delay.delay_us(300);
+
+        cs.set_low();
+        let mut buf = [0x5F, 0x07]; // FIFO_CONFIG1 enable temp, accel, gyro
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        delay.delay_us(300);
+
+        cs.set_low();
+        let mut buf = [0x4C, 0xE0]; // big Endian, count records, hold last sample
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        delay.delay_us(300);
+
+        cs.set_low();
+        let mut buf = [0x4B, 0x02]; // SIGNAL_PATH_RESET flush the FIFO
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        delay.delay_us(300);
+
+        // // read power bits
+        // cs.set_low();
+        // let mut buf = [0x4E | 0x80, 0x00];
+        // spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        // cs.set_high();
+        // defmt::info!("Power bits: {:02x}", buf[1]);
+        // delay.delay_ms(15);
+
+        // set accel range
+        cs.set_low();
+        let mut buf = [0x50, (0x00 << 5) | (0x06 & 0x0F)];
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        delay.delay_ms(15);
+
+        // enable power on accel and gyro
+        cs.set_low();
+        let mut buf = [0x4E, 0x0F];
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        cs.set_high();
+        // min 200us sleep recommended
+        delay.delay_us(300);
+
+        let mut fifo_buffer = [0u8; 16 * 10 + 1];
         loop {
-            let start = dwt.cyccnt.read();
-            imu.select_chip().expect("IMU select chip failed");
-            // let temperature = imu.temperature_celsius().expect("IMU read failed");
-            // let accel_odr = imu.accel_odr().expect("IMU read failed");
-            // let device_id = imu.device_id().expect("IMU read failed");
-            let accel = imu.acceleration().expect("IMU read failed");
-            // let power_mode = imu.power_mode().expect("IMU read failed");
-            imu.unselect_chip().expect("IMU unselect chip failed");
+            // read fifo count
+            cs.set_low();
+            let mut buf = [0x2E | 0x80, 0x00, 0x00];
+            spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+            cs.set_high();
+            delay.delay_us(300);
+            let fifo_count = u16::from_be_bytes([buf[1], buf[2]]);
+            defmt::info!("FIFO count: {}", fifo_count);
 
-            let end = dwt.cyccnt.read();
-            let diff = end.wrapping_sub(start);
-            // defmt::info!("IMU Temp: {}", temperature);
-            // defmt::info!("IMU Accel ODR: {:02x}", accel_odr as u8);
-            // defmt::info!("IMU WHO_AM_I: {:02x}", device_id);
-            defmt::info!("IMU acceleration: {:?}", accel);
-            // defmt::info!("IMU Power: {}", power_mode as u8);
-            defmt::info!("IMU initialization cycle count: {}", diff);
-            cortex_m::asm::delay(2_520_000);
+            for _ in 0..fifo_count {
+                // read fifo data
+                cs.set_low();
+                let mut buf = [
+                    0x30 | 0x80,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                ];
+                spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+                if fifo_count < 100 {
+                    defmt::info!(
+                        "FIFO data: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                        buf[0],
+                        buf[1],
+                        buf[2],
+                        buf[3],
+                        buf[4],
+                        buf[5],
+                        buf[6],
+                        buf[7],
+                        buf[8],
+                        buf[9],
+                        buf[10],
+                        buf[11],
+                        buf[12],
+                        buf[13],
+                        buf[14],
+                        buf[15],
+                        buf[16],
+                    );
+                }
+                cs.set_high();
+            }
+
+            // cs.set_low();
+            // let mut buf = [0x1D | 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+            // spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+            // cs.set_high();
+            // let raw_temperature = i16::from_be_bytes([buf[1], buf[2]]);
+            // let raw_acc_x = i16::from_be_bytes([buf[3], buf[4]]);
+            // let raw_acc_y = i16::from_be_bytes([buf[5], buf[6]]);
+            // let raw_acc_z = i16::from_be_bytes([buf[7], buf[8]]);
+            // let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
+            // let acc_y = raw_acc_y as f32 * 9.80665 / 2048.0;
+            // let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
+            //
+            // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
+            // defmt::info!("Temperature: {}", temperature_celsius);
+            // defmt::info!("Accel: ({}, {}, {})", acc_x, acc_y, acc_z);
+            delay.delay_ms(5);
         }
 
         // -----------------------------------------------------------------------------------------
@@ -185,6 +291,7 @@ mod app {
         .unwrap()
         .build();
 
+        Mono::start(delay.release().release(), 168_000_000);
         (Shared { usb_dev, serial }, Local { dwt })
     }
 

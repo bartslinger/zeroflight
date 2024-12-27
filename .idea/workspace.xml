@@ -7,8 +7,7 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="usb-otg, baro who-am-i, imu who-am-i">
-      <change beforePath="$PROJECT_DIR$/.cargo/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/.cargo/config.toml" afterDir="false" />
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="getting some imu measurements">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
@@ -117,7 +116,7 @@
       <workItem from="1735136574293" duration="1966000" />
       <workItem from="1735140090097" duration="7608000" />
       <workItem from="1735200342411" duration="17040000" />
-      <workItem from="1735260186651" duration="13200000" />
+      <workItem from="1735260186651" duration="21842000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -183,7 +182,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735266182447</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="getting some imu measurements">
+      <option name="closed" value="true" />
+      <created>1735283999269</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1735283999269</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -196,6 +203,7 @@
     <MESSAGE value="run periodic loop on speedybee" />
     <MESSAGE value="configure usb cdc-acm device on speedybee" />
     <MESSAGE value="usb-otg, baro who-am-i, imu who-am-i" />
-    <option name="LAST_COMMIT_MESSAGE" value="usb-otg, baro who-am-i, imu who-am-i" />
+    <MESSAGE value="getting some imu measurements" />
+    <option name="LAST_COMMIT_MESSAGE" value="getting some imu measurements" />
   </component>
 </project>
