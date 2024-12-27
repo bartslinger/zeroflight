@@ -115,7 +115,7 @@ mod app {
                 polarity: stm32f4xx_hal::spi::Polarity::IdleHigh,
                 phase: stm32f4xx_hal::spi::Phase::CaptureOnSecondTransition,
             },
-            100.kHz(),
+            1.MHz(),
             &clocks,
         );
 
@@ -182,63 +182,58 @@ mod app {
         // min 200us sleep recommended
         delay.delay_us(300);
 
+        let mut total_samples = 0;
         let mut fifo_buffer = [0u8; 16 * 10 + 1];
         loop {
+            delay.delay_us(1);
             // read fifo count
             cs.set_low();
             let mut buf = [0x2E | 0x80, 0x00, 0x00];
             spi1.transfer_in_place(&mut buf).expect("IMU write failed");
             cs.set_high();
-            delay.delay_us(300);
+            delay.delay_us(10);
             let fifo_count = u16::from_be_bytes([buf[1], buf[2]]);
-            defmt::info!("FIFO count: {}", fifo_count);
 
-            for _ in 0..fifo_count {
-                // read fifo data
-                cs.set_low();
-                let mut buf = [
-                    0x30 | 0x80,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                    0x00,
-                ];
-                spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-                if fifo_count < 100 {
-                    defmt::info!(
-                        "FIFO data: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                        buf[0],
-                        buf[1],
-                        buf[2],
-                        buf[3],
-                        buf[4],
-                        buf[5],
-                        buf[6],
-                        buf[7],
-                        buf[8],
-                        buf[9],
-                        buf[10],
-                        buf[11],
-                        buf[12],
-                        buf[13],
-                        buf[14],
-                        buf[15],
-                        buf[16],
-                    );
+            let fifo_read_count = fifo_count.min(10);
+            for _ in 0..fifo_read_count {
+                total_samples += 1;
+                if total_samples % 1000 == 0 {
+                    defmt::info!("Total samples: {}", total_samples);
                 }
-                cs.set_high();
+            }
+            // defmt::info!("FIFO count: {}, read {}", fifo_count, fifo_read_count);
+            let fifo_reg_read = 0x30 | 0x80;
+            // read fifo data
+            if fifo_read_count == 0 {
+                continue;
+            }
+            cs.set_low();
+            let mut buf = &mut fifo_buffer[..(16 * fifo_read_count as usize + 1)];
+            buf[0] = fifo_reg_read;
+            spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+            cs.set_high();
+
+            if fifo_read_count < 0 {
+                defmt::info!(
+                    "FIFO data: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                    buf[0],
+                    buf[1],
+                    buf[2],
+                    buf[3],
+                    buf[4],
+                    buf[5],
+                    buf[6],
+                    buf[7],
+                    buf[8],
+                    buf[9],
+                    buf[10],
+                    buf[11],
+                    buf[12],
+                    buf[13],
+                    buf[14],
+                    buf[15],
+                    buf[16],
+                );
             }
 
             // cs.set_low();
@@ -256,7 +251,6 @@ mod app {
             // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
             // defmt::info!("Temperature: {}", temperature_celsius);
             // defmt::info!("Accel: ({}, {}, {})", acc_x, acc_y, acc_z);
-            delay.delay_ms(5);
         }
 
         // -----------------------------------------------------------------------------------------
