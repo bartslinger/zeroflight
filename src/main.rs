@@ -11,9 +11,6 @@ use panic_halt as _;
 mod app {
     // use cortex_m_semihosting::{debug, hprintln};
     use rtic_monotonics::systick::prelude::*;
-    use stm32f4xx_hal::dma::traits::StreamISR;
-    use stm32f4xx_hal::hal_02::digital::v2::OutputPin;
-    use stm32f4xx_hal::{ClearFlags, Listen, ReadFlags};
 
     systick_monotonic!(Mono, 1000);
 
@@ -35,12 +32,15 @@ mod app {
             None,
         READ_WHO_AM_I: [u8; 2] = [0x75 | 0x80, 0x00],
         ANSWER: [u8; 2] = [0xAA, 0xAA],
-        TX_BUFFER_1: [u8; 2] = [0x75 | 0x80, 0x00],
-        TX_BUFFER_2: [u8; 2] = [0x75 | 0x80, 0x00],
-        RX_BUFFER_1: [u8; 2] = [0xAA, 0xBB],
-        RX_BUFFER_2: [u8; 2] = [0xAA, 0xBB],
+        TX_BUFFER_1: [u8; 129] = [0x00; 129],
+        TX_BUFFER_2: [u8; 129] = [0x00; 129],
+        RX_BUFFER_1: [u8; 129] = [0x00; 129],
+        RX_BUFFER_2: [u8; 129] = [0x00; 129],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
+        cx.local.TX_BUFFER_1[0] = 0x75 | 0x80;
+        cx.local.TX_BUFFER_2[0] = 0x75 | 0x80;
+
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
         defmt::info!("init");
 
@@ -205,22 +205,19 @@ mod app {
         let diff = end.wrapping_sub(start);
         defmt::info!("SPI read cycle count: {}", diff);
 
-        // try a who-am-i with interrupts
-        let start = dwt.cyccnt.read();
-        cs.set_low();
-        let mut buf = [0x75 | 0x80, 0x00];
-        // spi1.listen(stm32f4xx_hal::spi::Event::RxNotEmpty | stm32f4xx_hal::spi::Event::TxEmpty);
-
+        // -----------------------------------------------------------------------------------------
         // try a who-am-i with dma
         let (tx, rx) = spi1.use_dma().txrx();
 
         let tx_stream = dma2.3;
         let rx_stream = dma2.0;
 
+        let start = dwt.cyccnt.read();
         let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
             rx_stream,
             rx,
             cx.local.RX_BUFFER_1,
+            Some(2),
             None,
             stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
         );
@@ -228,9 +225,13 @@ mod app {
             tx_stream,
             tx,
             cx.local.TX_BUFFER_1,
+            Some(2),
             None,
             stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
         );
+        let end = dwt.cyccnt.read();
+        let diff = end.wrapping_sub(start);
+        defmt::info!("DMA SPI config cycle count: {}", diff);
 
         let start = dwt.cyccnt.read();
         cs.set_low();
@@ -261,19 +262,22 @@ mod app {
         } else {
             defmt::info!("transfer not complete");
         }
-        // let (a, b, c, d) = rx_transfer.release();
-        // defmt::info!("ok got {:02x}", c[1]);
         cs.set_high();
         delay.delay_us(1);
 
         cs.set_low();
         // send another DMA transfer by swapping the buffers
+        let start = dwt.cyccnt.read();
         let (prev_tx_buffer, _) = tx_transfer
-            .next_transfer(cx.local.TX_BUFFER_2)
+            .next_transfer(cx.local.TX_BUFFER_2, Some(2))
             .expect("no next");
         let (prev_rx_buffer, _) = rx_transfer
-            .next_transfer(cx.local.RX_BUFFER_2)
+            .next_transfer(cx.local.RX_BUFFER_2, Some(2))
             .expect("no next");
+
+        let end = dwt.cyccnt.read();
+        let diff = end.wrapping_sub(start);
+        defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
 
         defmt::info!(
             "prev tx buffer: {:02x} {:02x}",
@@ -290,29 +294,73 @@ mod app {
         cs.set_high();
         let mut ready_tx_buffer = prev_tx_buffer;
         let mut ready_rx_buffer = prev_rx_buffer;
+        let mut reading_whoami = true;
         loop {
-            delay.delay_ms(500);
+            delay.delay_ms(50);
             delay.delay_us(1);
 
             cs.set_low();
-            let (prev_tx_buffer, _) = tx_transfer.next_transfer(ready_tx_buffer).expect("no next");
-            let (prev_rx_buffer, _) = rx_transfer.next_transfer(ready_rx_buffer).expect("no next");
+            if reading_whoami {
+                let start = dwt.cyccnt.read();
+                ready_tx_buffer[0] = 0x2E | 0x80;
+                ready_tx_buffer[1] = 0x00;
+                let (prev_tx_buffer, _) = tx_transfer
+                    .next_transfer(ready_tx_buffer, Some(3))
+                    .expect("no next");
+                let (prev_rx_buffer, _) = rx_transfer
+                    .next_transfer(ready_rx_buffer, Some(3))
+                    .expect("no next");
+                let end = dwt.cyccnt.read();
+                let diff = end.wrapping_sub(start);
+                defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
 
-            defmt::info!(
-                "prev tx buffer: {:02x} {:02x}",
-                prev_tx_buffer[0],
-                prev_tx_buffer[1]
-            );
-            defmt::info!(
-                "prev rx buffer: {:02x} {:02x}",
-                prev_rx_buffer[0],
-                prev_rx_buffer[1],
-            );
+                defmt::info!(
+                    "prev tx buffer: {:02x} {:02x}",
+                    prev_tx_buffer[0],
+                    prev_tx_buffer[1]
+                );
+                defmt::info!(
+                    "prev rx buffer: {:02x} {:02x}",
+                    prev_rx_buffer[0],
+                    prev_rx_buffer[1],
+                );
+                ready_tx_buffer = prev_tx_buffer;
+                ready_rx_buffer = prev_rx_buffer;
+            } else {
+                let start = dwt.cyccnt.read();
+                ready_tx_buffer[0] = 0x75 | 0x80;
+                ready_tx_buffer[1] = 0x00;
+                let (prev_tx_buffer, _) = tx_transfer
+                    .next_transfer(ready_tx_buffer, Some(2))
+                    .expect("no next");
+                let (prev_rx_buffer, _) = rx_transfer
+                    .next_transfer(ready_rx_buffer, Some(2))
+                    .expect("no next");
+                let end = dwt.cyccnt.read();
+                let diff = end.wrapping_sub(start);
+                defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
+
+                let fifo_count = u16::from_be_bytes([prev_rx_buffer[1], prev_rx_buffer[2]]);
+                defmt::info!(
+                    "prev tx buffer: {:02x} {:02x} {:02x}",
+                    prev_tx_buffer[0],
+                    prev_tx_buffer[1],
+                    prev_tx_buffer[2],
+                );
+                defmt::info!(
+                    "prev rx buffer: {:02x} {:02x} {:02x} (fifo count: {})",
+                    prev_rx_buffer[0],
+                    prev_rx_buffer[1],
+                    prev_rx_buffer[2],
+                    fifo_count,
+                );
+                ready_tx_buffer = prev_tx_buffer;
+                ready_rx_buffer = prev_rx_buffer;
+            }
 
             rx_transfer.wait();
             cs.set_high();
-            ready_tx_buffer = prev_tx_buffer;
-            ready_rx_buffer = prev_rx_buffer;
+            reading_whoami = !reading_whoami;
         }
 
         // let mut total_samples = 0;
@@ -462,7 +510,7 @@ mod app {
     }
 
     #[task(binds = SPI1, priority = 2)]
-    fn spi_interrupt(cx: spi_interrupt::Context) {
+    fn spi_interrupt(_cx: spi_interrupt::Context) {
         defmt::info!("SPI interrupt");
     }
 }

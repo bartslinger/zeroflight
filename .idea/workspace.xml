@@ -7,8 +7,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="reading up to 10 imu samples simultaneously">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="read who-am-i in a loop with dma">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -116,7 +118,7 @@
       <workItem from="1735200342411" duration="17040000" />
       <workItem from="1735260186651" duration="31961000" />
       <workItem from="1735344693828" duration="5933000" />
-      <workItem from="1735355462982" duration="5260000" />
+      <workItem from="1735355462982" duration="12678000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -206,7 +208,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735309690810</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="read who-am-i in a loop with dma">
+      <option name="closed" value="true" />
+      <created>1735378921802</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1735378921802</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -222,6 +232,7 @@
     <MESSAGE value="getting some imu measurements" />
     <MESSAGE value="fifo operations on the imu" />
     <MESSAGE value="reading up to 10 imu samples simultaneously" />
-    <option name="LAST_COMMIT_MESSAGE" value="reading up to 10 imu samples simultaneously" />
+    <MESSAGE value="read who-am-i in a loop with dma" />
+    <option name="LAST_COMMIT_MESSAGE" value="read who-am-i in a loop with dma" />
   </component>
 </project>
