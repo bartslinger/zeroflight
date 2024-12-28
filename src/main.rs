@@ -11,6 +11,8 @@ use panic_halt as _;
 mod app {
     // use cortex_m_semihosting::{debug, hprintln};
     use rtic_monotonics::systick::prelude::*;
+    use stm32f4xx_hal::hal_02::digital::v2::OutputPin;
+    use stm32f4xx_hal::ReadFlags;
 
     systick_monotonic!(Mono, 1000);
 
@@ -29,7 +31,9 @@ mod app {
     #[init(local = [
         EP_MEMORY: [u32; 1024] = [0; 1024],
         USB_BUS: Option<usb_device::bus::UsbBusAllocator<stm32f4xx_hal::otg_fs::UsbBusType>> =
-            None
+            None,
+        READ_WHO_AM_I: [u8; 2] = [0x75 | 0x80, 0x00],
+        ANSWER: [u8; 2] = [0xAA, 0xAA],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
@@ -55,7 +59,7 @@ mod app {
 
         // -----------------------------------------------------------------------------------------
         // DMA
-        let _dma1 = stm32f4xx_hal::dma::StreamsTuple::new(cx.device.DMA1);
+        let dma2 = stm32f4xx_hal::dma::StreamsTuple::new(cx.device.DMA2);
 
         // -----------------------------------------------------------------------------------------
         // Configure I2C1
@@ -115,7 +119,7 @@ mod app {
                 polarity: stm32f4xx_hal::spi::Polarity::IdleHigh,
                 phase: stm32f4xx_hal::spi::Phase::CaptureOnSecondTransition,
             },
-            1.MHz(),
+            100.kHz(),
             &clocks,
         );
 
@@ -182,76 +186,136 @@ mod app {
         // min 200us sleep recommended
         delay.delay_us(300);
 
-        let mut total_samples = 0;
-        let mut fifo_buffer = [0u8; 16 * 10 + 1];
-        loop {
-            delay.delay_us(1);
-            // read fifo count
-            cs.set_low();
-            let mut buf = [0x2E | 0x80, 0x00, 0x00];
-            spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-            cs.set_high();
-            delay.delay_us(10);
-            let fifo_count = u16::from_be_bytes([buf[1], buf[2]]);
+        // try a two-step who-am-i
+        cs.set_low();
+        let mut buf = [0x75 | 0x80];
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        defmt::info!("was 0x75: {:02x}", buf[0]);
+        let mut buf = [0x00];
+        delay.delay_ms(1);
+        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        defmt::info!("who am i: {:02x}", buf[0]);
+        cs.set_high();
 
-            let fifo_read_count = fifo_count.min(10);
-            for _ in 0..fifo_read_count {
-                total_samples += 1;
-                if total_samples % 1000 == 0 {
-                    defmt::info!("Total samples: {}", total_samples);
-                }
-            }
-            // defmt::info!("FIFO count: {}, read {}", fifo_count, fifo_read_count);
-            let fifo_reg_read = 0x30 | 0x80;
-            // read fifo data
-            if fifo_read_count == 0 {
-                continue;
-            }
-            cs.set_low();
-            let mut buf = &mut fifo_buffer[..(16 * fifo_read_count as usize + 1)];
-            buf[0] = fifo_reg_read;
-            spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-            cs.set_high();
+        // try a who-am-i with dma
+        let (tx, rx) = spi1.use_dma().txrx();
+        cs.set_low();
 
-            if fifo_read_count < 0 {
-                defmt::info!(
-                    "FIFO data: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                    buf[0],
-                    buf[1],
-                    buf[2],
-                    buf[3],
-                    buf[4],
-                    buf[5],
-                    buf[6],
-                    buf[7],
-                    buf[8],
-                    buf[9],
-                    buf[10],
-                    buf[11],
-                    buf[12],
-                    buf[13],
-                    buf[14],
-                    buf[15],
-                    buf[16],
-                );
-            }
+        let tx_stream = dma2.3;
+        let rx_stream = dma2.0;
 
-            // cs.set_low();
-            // let mut buf = [0x1D | 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-            // spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-            // cs.set_high();
-            // let raw_temperature = i16::from_be_bytes([buf[1], buf[2]]);
-            // let raw_acc_x = i16::from_be_bytes([buf[3], buf[4]]);
-            // let raw_acc_y = i16::from_be_bytes([buf[5], buf[6]]);
-            // let raw_acc_z = i16::from_be_bytes([buf[7], buf[8]]);
-            // let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
-            // let acc_y = raw_acc_y as f32 * 9.80665 / 2048.0;
-            // let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
-            //
-            // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
-            // defmt::info!("Temperature: {}", temperature_celsius);
-            // defmt::info!("Accel: ({}, {}, {})", acc_x, acc_y, acc_z);
+        let start = dwt.cyccnt.read();
+        let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
+            rx_stream,
+            rx,
+            cx.local.ANSWER,
+            None,
+            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
+        );
+        rx_transfer.start(|rx| {
+            defmt::info!("rx transfer started");
+        });
+        let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
+            tx_stream,
+            tx,
+            cx.local.READ_WHO_AM_I,
+            None,
+            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
+        );
+        tx_transfer.start(|_tx| {
+            defmt::info!("tx transfer started");
+        });
+        let end = dwt.cyccnt.read();
+        let diff = end.wrapping_sub(start);
+        defmt::info!("DMA SPI start cycle count: {}", diff);
+
+        delay.delay_ms(1);
+        let flags = tx_transfer.flags();
+        if flags.is_transfer_complete() {
+            defmt::info!("transfer complete");
+        } else {
+            defmt::info!("transfer not complete");
         }
+        let flags = rx_transfer.flags();
+        if flags.is_transfer_complete() {
+            defmt::info!("transfer complete");
+        } else {
+            defmt::info!("transfer not complete");
+        }
+        let (a, b, c, d) = rx_transfer.release();
+        defmt::info!("ok got {:02x}", c[1]);
+
+        cs.set_high();
+        // let mut total_samples = 0;
+        // let mut fifo_buffer = [0u8; 16 * 10 + 1];
+        // loop {
+        //     delay.delay_us(1);
+        //     // read fifo count
+        //     cs.set_low();
+        //     let mut buf = [0x2E | 0x80, 0x00, 0x00];
+        //     spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        //     cs.set_high();
+        //     delay.delay_us(10);
+        //     let fifo_count = u16::from_be_bytes([buf[1], buf[2]]);
+        //
+        //     let fifo_read_count = fifo_count.min(10);
+        //     for _ in 0..fifo_read_count {
+        //         total_samples += 1;
+        //         if total_samples % 1000 == 0 {
+        //             defmt::info!("Total samples: {}", total_samples);
+        //         }
+        //     }
+        //     // defmt::info!("FIFO count: {}, read {}", fifo_count, fifo_read_count);
+        //     let fifo_reg_read = 0x30 | 0x80;
+        //     // read fifo data
+        //     if fifo_read_count == 0 {
+        //         continue;
+        //     }
+        //     cs.set_low();
+        //     let mut buf = &mut fifo_buffer[..(16 * fifo_read_count as usize + 1)];
+        //     buf[0] = fifo_reg_read;
+        //     spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        //     cs.set_high();
+        //
+        //     if fifo_read_count < 0 {
+        //         defmt::info!(
+        //             "FIFO data: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+        //             buf[0],
+        //             buf[1],
+        //             buf[2],
+        //             buf[3],
+        //             buf[4],
+        //             buf[5],
+        //             buf[6],
+        //             buf[7],
+        //             buf[8],
+        //             buf[9],
+        //             buf[10],
+        //             buf[11],
+        //             buf[12],
+        //             buf[13],
+        //             buf[14],
+        //             buf[15],
+        //             buf[16],
+        //         );
+        //     }
+        //
+        //     // cs.set_low();
+        //     // let mut buf = [0x1D | 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        //     // spi1.transfer_in_place(&mut buf).expect("IMU write failed");
+        //     // cs.set_high();
+        //     // let raw_temperature = i16::from_be_bytes([buf[1], buf[2]]);
+        //     // let raw_acc_x = i16::from_be_bytes([buf[3], buf[4]]);
+        //     // let raw_acc_y = i16::from_be_bytes([buf[5], buf[6]]);
+        //     // let raw_acc_z = i16::from_be_bytes([buf[7], buf[8]]);
+        //     // let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
+        //     // let acc_y = raw_acc_y as f32 * 9.80665 / 2048.0;
+        //     // let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
+        //     //
+        //     // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
+        //     // defmt::info!("Temperature: {}", temperature_celsius);
+        //     // defmt::info!("Accel: ({}, {}, {})", acc_x, acc_y, acc_z);
+        // }
 
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
