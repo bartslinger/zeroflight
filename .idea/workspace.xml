@@ -115,7 +115,8 @@
       <workItem from="1735140090097" duration="7608000" />
       <workItem from="1735200342411" duration="17040000" />
       <workItem from="1735260186651" duration="31961000" />
-      <workItem from="1735344693828" duration="2324000" />
+      <workItem from="1735344693828" duration="5933000" />
+      <workItem from="1735355462982" duration="5260000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
