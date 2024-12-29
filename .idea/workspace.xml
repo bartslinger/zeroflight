@@ -7,9 +7,8 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="pass imu data via channel, separate files">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="imu calculate values">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/imu.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -125,7 +124,7 @@
       <workItem from="1735260186651" duration="31961000" />
       <workItem from="1735344693828" duration="5933000" />
       <workItem from="1735355462982" duration="17435000" />
-      <workItem from="1735400491821" duration="11203000" />
+      <workItem from="1735400491821" duration="13100000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -247,7 +246,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735477526111</updated>
     </task>
-    <option name="localTasksCounter" value="16" />
+    <task id="LOCAL-00016" summary="imu calculate values">
+      <option name="closed" value="true" />
+      <created>1735479270214</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1735479270214</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -267,6 +274,7 @@
     <MESSAGE value="modified hal to allow dma with variable length buffer" />
     <MESSAGE value="continuously request fifo count and imu data" />
     <MESSAGE value="pass imu data via channel, separate files" />
-    <option name="LAST_COMMIT_MESSAGE" value="pass imu data via channel, separate files" />
+    <MESSAGE value="imu calculate values" />
+    <option name="LAST_COMMIT_MESSAGE" value="imu calculate values" />
   </component>
 </project>

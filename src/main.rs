@@ -286,193 +286,6 @@ mod app {
         let diff = end.wrapping_sub(start);
         defmt::info!("DMA SPI start cycle count: {}", diff);
 
-        // rx_transfer.wait();
-        // let flags = tx_transfer.flags();
-        // if flags.is_transfer_complete() {
-        //     defmt::info!("transfer complete");
-        // } else {
-        //     defmt::info!("transfer not complete");
-        // }
-        // let flags = rx_transfer.flags();
-        // if flags.is_transfer_complete() {
-        //     defmt::info!("transfer complete");
-        // } else {
-        //     defmt::info!("transfer not complete");
-        // }
-        // cs.set_high();
-        // delay.delay_us(1);
-        //
-        // cs.set_low();
-        // // send another DMA transfer by swapping the buffers
-        // let start = dwt.cyccnt.read();
-        // let (prev_tx_buffer, _) = tx_transfer
-        //     .next_transfer(cx.local.TX_BUFFER_2, Some(2))
-        //     .expect("no next");
-        // let (prev_rx_buffer, _) = rx_transfer
-        //     .next_transfer(cx.local.RX_BUFFER_2, Some(2))
-        //     .expect("no next");
-        //
-        // let end = dwt.cyccnt.read();
-        // let diff = end.wrapping_sub(start);
-        // defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
-        //
-        // defmt::info!(
-        //     "prev tx buffer: {:02x} {:02x}",
-        //     prev_tx_buffer[0],
-        //     prev_tx_buffer[1]
-        // );
-        // defmt::info!(
-        //     "prev rx buffer: {:02x} {:02x}",
-        //     prev_rx_buffer[0],
-        //     prev_rx_buffer[1],
-        // );
-        //
-        // rx_transfer.wait();
-        // cs.set_high();
-        // let mut ready_tx_buffer = prev_tx_buffer;
-        // let mut ready_rx_buffer = prev_rx_buffer;
-        // let mut reading_whoami = true;
-        // loop {
-        //     delay.delay_ms(50);
-        //     delay.delay_us(1);
-        //
-        //     cs.set_low();
-        //     if reading_whoami {
-        //         let start = dwt.cyccnt.read();
-        //         ready_tx_buffer[0] = 0x2E | 0x80;
-        //         ready_tx_buffer[1] = 0x00;
-        //         let (prev_tx_buffer, _) = tx_transfer
-        //             .next_transfer(ready_tx_buffer, Some(3))
-        //             .expect("no next");
-        //         let (prev_rx_buffer, _) = rx_transfer
-        //             .next_transfer(ready_rx_buffer, Some(3))
-        //             .expect("no next");
-        //         let end = dwt.cyccnt.read();
-        //         let diff = end.wrapping_sub(start);
-        //         defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
-        //
-        //         defmt::info!(
-        //             "prev tx buffer: {:02x} {:02x}",
-        //             prev_tx_buffer[0],
-        //             prev_tx_buffer[1]
-        //         );
-        //         defmt::info!(
-        //             "prev rx buffer: {:02x} {:02x}",
-        //             prev_rx_buffer[0],
-        //             prev_rx_buffer[1],
-        //         );
-        //         ready_tx_buffer = prev_tx_buffer;
-        //         ready_rx_buffer = prev_rx_buffer;
-        //     } else {
-        //         let start = dwt.cyccnt.read();
-        //         ready_tx_buffer[0] = 0x75 | 0x80;
-        //         ready_tx_buffer[1] = 0x00;
-        //         let (prev_tx_buffer, _) = tx_transfer
-        //             .next_transfer(ready_tx_buffer, Some(2))
-        //             .expect("no next");
-        //         let (prev_rx_buffer, _) = rx_transfer
-        //             .next_transfer(ready_rx_buffer, Some(2))
-        //             .expect("no next");
-        //         let end = dwt.cyccnt.read();
-        //         let diff = end.wrapping_sub(start);
-        //         defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
-        //
-        //         let fifo_count = u16::from_be_bytes([prev_rx_buffer[1], prev_rx_buffer[2]]);
-        //         defmt::info!(
-        //             "prev tx buffer: {:02x} {:02x} {:02x}",
-        //             prev_tx_buffer[0],
-        //             prev_tx_buffer[1],
-        //             prev_tx_buffer[2],
-        //         );
-        //         defmt::info!(
-        //             "prev rx buffer: {:02x} {:02x} {:02x} (fifo count: {})",
-        //             prev_rx_buffer[0],
-        //             prev_rx_buffer[1],
-        //             prev_rx_buffer[2],
-        //             fifo_count,
-        //         );
-        //         ready_tx_buffer = prev_tx_buffer;
-        //         ready_rx_buffer = prev_rx_buffer;
-        //     }
-        //
-        //     rx_transfer.wait();
-        //     cs.set_high();
-        //     reading_whoami = !reading_whoami;
-        // }
-
-        // ----- FIFO stuff ------------------------------------------------------------------------
-
-        // let mut total_samples = 0;
-        // let mut fifo_buffer = [0u8; 16 * 10 + 1];
-        // loop {
-        //     delay.delay_us(1);
-        //     // read fifo count
-        //     cs.set_low();
-        //     let mut buf = [0x2E | 0x80, 0x00, 0x00];
-        //     spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        //     cs.set_high();
-        //     delay.delay_us(10);
-        //     let fifo_count = u16::from_be_bytes([buf[1], buf[2]]);
-        //
-        //     let fifo_read_count = fifo_count.min(10);
-        //     for _ in 0..fifo_read_count {
-        //         total_samples += 1;
-        //         if total_samples % 1000 == 0 {
-        //             defmt::info!("Total samples: {}", total_samples);
-        //         }
-        //     }
-        //     // defmt::info!("FIFO count: {}, read {}", fifo_count, fifo_read_count);
-        //     let fifo_reg_read = 0x30 | 0x80;
-        //     // read fifo data
-        //     if fifo_read_count == 0 {
-        //         continue;
-        //     }
-        //     cs.set_low();
-        //     let mut buf = &mut fifo_buffer[..(16 * fifo_read_count as usize + 1)];
-        //     buf[0] = fifo_reg_read;
-        //     spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        //     cs.set_high();
-        //
-        //     if fifo_read_count < 0 {
-        //         defmt::info!(
-        //             "FIFO data: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-        //             buf[0],
-        //             buf[1],
-        //             buf[2],
-        //             buf[3],
-        //             buf[4],
-        //             buf[5],
-        //             buf[6],
-        //             buf[7],
-        //             buf[8],
-        //             buf[9],
-        //             buf[10],
-        //             buf[11],
-        //             buf[12],
-        //             buf[13],
-        //             buf[14],
-        //             buf[15],
-        //             buf[16],
-        //         );
-        //     }
-        //
-        //     // cs.set_low();
-        //     // let mut buf = [0x1D | 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        //     // spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        //     // cs.set_high();
-        //     // let raw_temperature = i16::from_be_bytes([buf[1], buf[2]]);
-        //     // let raw_acc_x = i16::from_be_bytes([buf[3], buf[4]]);
-        //     // let raw_acc_y = i16::from_be_bytes([buf[5], buf[6]]);
-        //     // let raw_acc_z = i16::from_be_bytes([buf[7], buf[8]]);
-        //     // let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
-        //     // let acc_y = raw_acc_y as f32 * 9.80665 / 2048.0;
-        //     // let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
-        //     //
-        //     // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
-        //     // defmt::info!("Temperature: {}", temperature_celsius);
-        //     // defmt::info!("Accel: ({}, {}, {})", acc_x, acc_y, acc_z);
-        // }
-
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
         let mut usb_dp = gpioa.pa12.into_push_pull_output();
@@ -524,13 +337,27 @@ mod app {
         )
     }
 
-    #[idle]
-    fn idle(_cx: idle::Context) -> ! {
+    #[idle(local = [dwt])]
+    fn idle(cx: idle::Context) -> ! {
+        let dwt = cx.local.dwt;
         blink::spawn().ok();
 
+        let mut prev_cyc_cnt = dwt.cyccnt.read();
+        let mut counter = 0;
         loop {
             // defmt::info!("loop");
             cortex_m::asm::nop();
+            counter += 1;
+            if counter >= 16_800_000 {
+                let cyc_cnt = dwt.cyccnt.read();
+                let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
+                let idle_time = 16_800_000_f32 * 10.;
+                let _ratio = 100. * (idle_time / time_passed as f32);
+
+                // defmt::info!("Idle: {}", ratio);
+                prev_cyc_cnt = cyc_cnt;
+                counter = 0;
+            }
         }
     }
 
@@ -550,14 +377,6 @@ mod app {
             let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
 
             let temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
-            // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
-            defmt::info!(
-                "Temperature: {}\tAccel: ({},\t{},\t{})",
-                temperature_celsius,
-                acc_x,
-                acc_y,
-                acc_z
-            );
         }
     }
 
@@ -565,7 +384,7 @@ mod app {
         #[task(priority = 1)]
         async fn blink(cx: blink::Context);
 
-        #[task(binds = OTG_FS, local = [dwt], shared = [usb_dev, serial], priority = 1)]
+        #[task(binds = OTG_FS, shared = [usb_dev, serial], priority = 1)]
         fn usb_tx(cx: usb_tx::Context);
 
         #[task(
