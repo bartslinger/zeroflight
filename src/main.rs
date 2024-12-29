@@ -4,12 +4,18 @@
 #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
+mod blink;
+mod imu;
+mod usb;
+
 use defmt_rtt as _;
 use panic_halt as _;
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1])]
+#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
 mod app {
-    // use cortex_m_semihosting::{debug, hprintln};
+    use crate::blink::blink;
+    use crate::imu::imu_handler;
+    use crate::usb::usb_tx;
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
@@ -47,6 +53,7 @@ mod app {
         dwt: cortex_m::peripheral::DWT,
         imu_cs: gpio::PA4<gpio::Output<gpio::PushPull>>,
         prev_fifo_count: u16,
+        imu_data_sender: rtic_sync::channel::Sender<'static, [u8; 16], 5>,
     }
 
     #[init(local = [
@@ -61,13 +68,16 @@ mod app {
         RX_BUFFER_2: [u8; 129] = [0x00; 129],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
+        use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
+        defmt::info!("init");
+
         // cx.local.TX_BUFFER_1[0] = 0x75 | 0x80;
         // cx.local.TX_BUFFER_2[0] = 0x75 | 0x80;
         cx.local.TX_BUFFER_1[0] = 0x2E | 0x80;
         cx.local.TX_BUFFER_2[0] = 0x2E | 0x80;
 
-        use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
-        defmt::info!("init");
+        let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 5);
+        imu_handler::spawn(imu_data_receiver).ok();
 
         defmt::info!("Clock setup");
         let rcc = cx.device.RCC.constrain();
@@ -509,6 +519,7 @@ mod app {
                 dwt,
                 imu_cs: cs,
                 prev_fifo_count: 0,
+                imu_data_sender,
             },
         )
     }
@@ -523,41 +534,29 @@ mod app {
         }
     }
 
-    #[task(priority = 1)]
-    async fn blink(_cx: blink::Context) {
-        defmt::info!("blink task");
-        let mut instant = Mono::now();
-        loop {
-            instant += 1000.millis();
-            Mono::delay_until(instant).await;
-            // cx.local.led.set_high();
-            // let now = Mono::now();
-            // defmt::info!("LED off at {:?}", now.ticks());
+    extern "Rust" {
+        #[task(priority = 1)]
+        async fn blink(cx: blink::Context);
+        #[task(priority = 2)]
+        async fn imu_handler(
+            cx: imu_handler::Context,
+            imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 5>,
+        );
 
-            instant += 1000.millis();
-            Mono::delay_until(instant).await;
-            // cx.local.led.set_low();
-            // let now = Mono::now();
-            // defmt::info!("LED on  at {:?}", now.ticks());
-        }
+        #[task(binds = OTG_FS, local = [dwt], shared = [usb_dev, serial], priority = 1)]
+        fn usb_tx(cx: usb_tx::Context);
     }
 
-    #[task(binds = OTG_FS, local = [dwt], shared = [usb_dev, serial], priority = 1)]
-    fn usb_tx(cx: usb_tx::Context) {
-        let mut usb_dev = cx.shared.usb_dev;
-        let mut serial = cx.shared.serial;
-
-        (&mut usb_dev, &mut serial).lock(|usb_dev, serial| {
-            super::usb_poll(usb_dev, serial);
-        });
-    }
-
-    #[task(binds = DMA2_STREAM0, shared = [tx_transfer, tx_buffer, rx_transfer, rx_buffer], local = [imu_cs, prev_fifo_count], priority = 3)]
+    #[task(
+        binds = DMA2_STREAM0,
+        shared = [tx_transfer, tx_buffer, rx_transfer, rx_buffer],
+        local = [imu_cs, prev_fifo_count, imu_data_sender],
+        priority = 5
+    )]
     fn imu_rx_handler(cx: imu_rx_handler::Context) {
         use stm32f4xx_hal::dma::traits::StreamISR;
         cx.local.imu_cs.set_high();
-        // defmt::info!("DMA RX complete");
-        (
+        let mut imu_data = (
             cx.shared.rx_buffer,
             cx.shared.rx_transfer,
             cx.shared.tx_buffer,
@@ -576,12 +575,17 @@ mod app {
                 let (filled_tx_buffer, _) = tx_transfer.swap(ready_tx_buffer);
                 let (filled_rx_buffer, _) = rx_transfer.swap(ready_rx_buffer);
 
+                let mut imu_data = None;
                 let fifo_count = if filled_tx_buffer[0] == 0x2E | 0x80 {
                     // Expecting a FIFO count
                     let fifo_count = u16::from_be_bytes([filled_rx_buffer[1], filled_rx_buffer[2]]);
-                    defmt::info!("fifo count: {}", fifo_count);
+                    // defmt::info!("fifo count: {}", fifo_count);
                     fifo_count
                 } else if filled_tx_buffer[0] == 0x30 | 0x80 {
+                    // Got IMU data
+                    let mut output = [0u8; 16];
+                    output.copy_from_slice(&filled_rx_buffer[1..17]);
+                    imu_data = Some(output);
                     // After that, request fifo count again
                     filled_tx_buffer[0] = 0x2E | 0x80;
                     0
@@ -608,32 +612,10 @@ mod app {
                 *rx_buffer = Some(prev_rx_buffer);
                 *tx_buffer = Some(prev_tx_buffer);
                 *cx.local.prev_fifo_count = fifo_count;
+                imu_data
             });
-    }
-}
-
-fn usb_poll<B: usb_device::bus::UsbBus>(
-    usb_dev: &mut usb_device::device::UsbDevice<'static, B>,
-    serial: &mut usbd_serial::SerialPort<'static, B>,
-) {
-    if !usb_dev.poll(&mut [serial]) {
-        return;
-    }
-
-    let mut buf = [0u8; 8];
-
-    match serial.read(&mut buf) {
-        Ok(count) if count > 0 => {
-            // Echo back in upper case
-            for c in buf[0..count].iter_mut() {
-                if 0x61 <= *c && *c <= 0x7a {
-                    *c &= !0x20;
-                }
-            }
-
-            serial.write(&buf[0..count]).ok();
-            // cortex_m::asm::delay(20_000_000); // for testing priority
+        if let Some(imu_data) = imu_data.take() {
+            cx.local.imu_data_sender.try_send(imu_data).ok();
         }
-        _ => {}
     }
 }

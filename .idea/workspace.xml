@@ -7,8 +7,13 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="modified hal to allow dma with variable length buffer">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="continuously request fifo count and imu data">
+      <change afterPath="$PROJECT_DIR$/src/blink.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/usb.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -17,6 +22,13 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:release" />
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Rust File" />
+      </list>
+    </option>
+  </component>
   <component name="FormatOnSaveOptions">
     <option name="myRunOnSave" value="true" />
   </component>
@@ -35,24 +47,24 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Cargo.Run zeroflight.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
-    &quot;org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon&quot;: &quot;&quot;,
-    &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;actions.on.save&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Cargo.Run zeroflight.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.rust.reset.selective.auto.import": "true",
+    "git-widget-placeholder": "master",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
+    "org.rust.first.attach.projects": "true",
+    "settings.editor.selected.configurable": "actions.on.save",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RsExternalLinterProjectSettings">
     <option name="tool" value="Clippy" />
   </component>
@@ -117,7 +129,7 @@
       <workItem from="1735260186651" duration="31961000" />
       <workItem from="1735344693828" duration="5933000" />
       <workItem from="1735355462982" duration="17435000" />
-      <workItem from="1735400491821" duration="6600000" />
+      <workItem from="1735400491821" duration="9743000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -223,7 +235,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735394826833</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="continuously request fifo count and imu data">
+      <option name="closed" value="true" />
+      <created>1735472410992</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1735472410992</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -241,6 +261,7 @@
     <MESSAGE value="reading up to 10 imu samples simultaneously" />
     <MESSAGE value="read who-am-i in a loop with dma" />
     <MESSAGE value="modified hal to allow dma with variable length buffer" />
-    <option name="LAST_COMMIT_MESSAGE" value="modified hal to allow dma with variable length buffer" />
+    <MESSAGE value="continuously request fifo count and imu data" />
+    <option name="LAST_COMMIT_MESSAGE" value="continuously request fifo count and imu data" />
   </component>
 </project>

@@ -10,6 +10,7 @@ defmt-rtt = "0.4.1"
 panic-halt = "1.0.0"
 rtic = { version = "2.1.2", features = ["thumbv7-backend"] }
 rtic-monotonics = { version = "2.0.3", features = ["cortex-m-systick"] }
+rtic-sync = "1.3.0"
 stm32f4xx-hal = { path = "../stm32f4xx-hal", features = ["otg-fs", "stm32f405", "usb_fs"] }
 usb-device = "0.3.2"
 usbd-serial = "0.2.2"
