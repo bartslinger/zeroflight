@@ -7,10 +7,8 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="read who-am-i in a loop with dma">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="modified hal to allow dma with variable length buffer">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -118,7 +116,8 @@
       <workItem from="1735200342411" duration="17040000" />
       <workItem from="1735260186651" duration="31961000" />
       <workItem from="1735344693828" duration="5933000" />
-      <workItem from="1735355462982" duration="12678000" />
+      <workItem from="1735355462982" duration="17435000" />
+      <workItem from="1735400491821" duration="6600000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -216,7 +215,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735378921802</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="modified hal to allow dma with variable length buffer">
+      <option name="closed" value="true" />
+      <created>1735394826833</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1735394826833</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -233,6 +240,7 @@
     <MESSAGE value="fifo operations on the imu" />
     <MESSAGE value="reading up to 10 imu samples simultaneously" />
     <MESSAGE value="read who-am-i in a loop with dma" />
-    <option name="LAST_COMMIT_MESSAGE" value="read who-am-i in a loop with dma" />
+    <MESSAGE value="modified hal to allow dma with variable length buffer" />
+    <option name="LAST_COMMIT_MESSAGE" value="modified hal to allow dma with variable length buffer" />
   </component>
 </project>

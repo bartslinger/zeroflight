@@ -11,19 +11,42 @@ use panic_halt as _;
 mod app {
     // use cortex_m_semihosting::{debug, hprintln};
     use rtic_monotonics::systick::prelude::*;
+    use stm32f4xx_hal::gpio;
 
     systick_monotonic!(Mono, 1000);
+
+    type TxTransfer = stm32f4xx_hal::dma::Transfer<
+        stm32f4xx_hal::dma::Stream3<stm32f4xx_hal::pac::DMA2>,
+        3,
+        stm32f4xx_hal::spi::Tx<stm32f4xx_hal::pac::SPI1>,
+        stm32f4xx_hal::dma::MemoryToPeripheral,
+        &'static mut [u8; 129],
+    >;
+
+    type RxTransfer = stm32f4xx_hal::dma::Transfer<
+        stm32f4xx_hal::dma::Stream0<stm32f4xx_hal::pac::DMA2>,
+        3,
+        stm32f4xx_hal::spi::Rx<stm32f4xx_hal::pac::SPI1>,
+        stm32f4xx_hal::dma::PeripheralToMemory,
+        &'static mut [u8; 129],
+    >;
 
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
+        tx_buffer: Option<&'static mut [u8; 129]>,
+        rx_buffer: Option<&'static mut [u8; 129]>,
+        tx_transfer: TxTransfer,
+        rx_transfer: RxTransfer,
     }
 
     #[local]
     struct Local {
         // led: gpio::PC13<Output<PushPull>>,
         dwt: cortex_m::peripheral::DWT,
+        imu_cs: gpio::PA4<gpio::Output<gpio::PushPull>>,
+        prev_fifo_count: u16,
     }
 
     #[init(local = [
@@ -38,8 +61,10 @@ mod app {
         RX_BUFFER_2: [u8; 129] = [0x00; 129],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
-        cx.local.TX_BUFFER_1[0] = 0x75 | 0x80;
-        cx.local.TX_BUFFER_2[0] = 0x75 | 0x80;
+        // cx.local.TX_BUFFER_1[0] = 0x75 | 0x80;
+        // cx.local.TX_BUFFER_2[0] = 0x75 | 0x80;
+        cx.local.TX_BUFFER_1[0] = 0x2E | 0x80;
+        cx.local.TX_BUFFER_2[0] = 0x2E | 0x80;
 
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
         defmt::info!("init");
@@ -217,15 +242,17 @@ mod app {
             rx_stream,
             rx,
             cx.local.RX_BUFFER_1,
-            Some(2),
+            Some(3),
             None,
-            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
+            stm32f4xx_hal::dma::config::DmaConfig::default()
+                .memory_increment(true)
+                .transfer_complete_interrupt(true),
         );
         let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
             tx_stream,
             tx,
             cx.local.TX_BUFFER_1,
-            Some(2),
+            Some(3),
             None,
             stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
         );
@@ -249,119 +276,121 @@ mod app {
         let diff = end.wrapping_sub(start);
         defmt::info!("DMA SPI start cycle count: {}", diff);
 
-        rx_transfer.wait();
-        let flags = tx_transfer.flags();
-        if flags.is_transfer_complete() {
-            defmt::info!("transfer complete");
-        } else {
-            defmt::info!("transfer not complete");
-        }
-        let flags = rx_transfer.flags();
-        if flags.is_transfer_complete() {
-            defmt::info!("transfer complete");
-        } else {
-            defmt::info!("transfer not complete");
-        }
-        cs.set_high();
-        delay.delay_us(1);
+        // rx_transfer.wait();
+        // let flags = tx_transfer.flags();
+        // if flags.is_transfer_complete() {
+        //     defmt::info!("transfer complete");
+        // } else {
+        //     defmt::info!("transfer not complete");
+        // }
+        // let flags = rx_transfer.flags();
+        // if flags.is_transfer_complete() {
+        //     defmt::info!("transfer complete");
+        // } else {
+        //     defmt::info!("transfer not complete");
+        // }
+        // cs.set_high();
+        // delay.delay_us(1);
+        //
+        // cs.set_low();
+        // // send another DMA transfer by swapping the buffers
+        // let start = dwt.cyccnt.read();
+        // let (prev_tx_buffer, _) = tx_transfer
+        //     .next_transfer(cx.local.TX_BUFFER_2, Some(2))
+        //     .expect("no next");
+        // let (prev_rx_buffer, _) = rx_transfer
+        //     .next_transfer(cx.local.RX_BUFFER_2, Some(2))
+        //     .expect("no next");
+        //
+        // let end = dwt.cyccnt.read();
+        // let diff = end.wrapping_sub(start);
+        // defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
+        //
+        // defmt::info!(
+        //     "prev tx buffer: {:02x} {:02x}",
+        //     prev_tx_buffer[0],
+        //     prev_tx_buffer[1]
+        // );
+        // defmt::info!(
+        //     "prev rx buffer: {:02x} {:02x}",
+        //     prev_rx_buffer[0],
+        //     prev_rx_buffer[1],
+        // );
+        //
+        // rx_transfer.wait();
+        // cs.set_high();
+        // let mut ready_tx_buffer = prev_tx_buffer;
+        // let mut ready_rx_buffer = prev_rx_buffer;
+        // let mut reading_whoami = true;
+        // loop {
+        //     delay.delay_ms(50);
+        //     delay.delay_us(1);
+        //
+        //     cs.set_low();
+        //     if reading_whoami {
+        //         let start = dwt.cyccnt.read();
+        //         ready_tx_buffer[0] = 0x2E | 0x80;
+        //         ready_tx_buffer[1] = 0x00;
+        //         let (prev_tx_buffer, _) = tx_transfer
+        //             .next_transfer(ready_tx_buffer, Some(3))
+        //             .expect("no next");
+        //         let (prev_rx_buffer, _) = rx_transfer
+        //             .next_transfer(ready_rx_buffer, Some(3))
+        //             .expect("no next");
+        //         let end = dwt.cyccnt.read();
+        //         let diff = end.wrapping_sub(start);
+        //         defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
+        //
+        //         defmt::info!(
+        //             "prev tx buffer: {:02x} {:02x}",
+        //             prev_tx_buffer[0],
+        //             prev_tx_buffer[1]
+        //         );
+        //         defmt::info!(
+        //             "prev rx buffer: {:02x} {:02x}",
+        //             prev_rx_buffer[0],
+        //             prev_rx_buffer[1],
+        //         );
+        //         ready_tx_buffer = prev_tx_buffer;
+        //         ready_rx_buffer = prev_rx_buffer;
+        //     } else {
+        //         let start = dwt.cyccnt.read();
+        //         ready_tx_buffer[0] = 0x75 | 0x80;
+        //         ready_tx_buffer[1] = 0x00;
+        //         let (prev_tx_buffer, _) = tx_transfer
+        //             .next_transfer(ready_tx_buffer, Some(2))
+        //             .expect("no next");
+        //         let (prev_rx_buffer, _) = rx_transfer
+        //             .next_transfer(ready_rx_buffer, Some(2))
+        //             .expect("no next");
+        //         let end = dwt.cyccnt.read();
+        //         let diff = end.wrapping_sub(start);
+        //         defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
+        //
+        //         let fifo_count = u16::from_be_bytes([prev_rx_buffer[1], prev_rx_buffer[2]]);
+        //         defmt::info!(
+        //             "prev tx buffer: {:02x} {:02x} {:02x}",
+        //             prev_tx_buffer[0],
+        //             prev_tx_buffer[1],
+        //             prev_tx_buffer[2],
+        //         );
+        //         defmt::info!(
+        //             "prev rx buffer: {:02x} {:02x} {:02x} (fifo count: {})",
+        //             prev_rx_buffer[0],
+        //             prev_rx_buffer[1],
+        //             prev_rx_buffer[2],
+        //             fifo_count,
+        //         );
+        //         ready_tx_buffer = prev_tx_buffer;
+        //         ready_rx_buffer = prev_rx_buffer;
+        //     }
+        //
+        //     rx_transfer.wait();
+        //     cs.set_high();
+        //     reading_whoami = !reading_whoami;
+        // }
 
-        cs.set_low();
-        // send another DMA transfer by swapping the buffers
-        let start = dwt.cyccnt.read();
-        let (prev_tx_buffer, _) = tx_transfer
-            .next_transfer(cx.local.TX_BUFFER_2, Some(2))
-            .expect("no next");
-        let (prev_rx_buffer, _) = rx_transfer
-            .next_transfer(cx.local.RX_BUFFER_2, Some(2))
-            .expect("no next");
-
-        let end = dwt.cyccnt.read();
-        let diff = end.wrapping_sub(start);
-        defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
-
-        defmt::info!(
-            "prev tx buffer: {:02x} {:02x}",
-            prev_tx_buffer[0],
-            prev_tx_buffer[1]
-        );
-        defmt::info!(
-            "prev rx buffer: {:02x} {:02x}",
-            prev_rx_buffer[0],
-            prev_rx_buffer[1],
-        );
-
-        rx_transfer.wait();
-        cs.set_high();
-        let mut ready_tx_buffer = prev_tx_buffer;
-        let mut ready_rx_buffer = prev_rx_buffer;
-        let mut reading_whoami = true;
-        loop {
-            delay.delay_ms(50);
-            delay.delay_us(1);
-
-            cs.set_low();
-            if reading_whoami {
-                let start = dwt.cyccnt.read();
-                ready_tx_buffer[0] = 0x2E | 0x80;
-                ready_tx_buffer[1] = 0x00;
-                let (prev_tx_buffer, _) = tx_transfer
-                    .next_transfer(ready_tx_buffer, Some(3))
-                    .expect("no next");
-                let (prev_rx_buffer, _) = rx_transfer
-                    .next_transfer(ready_rx_buffer, Some(3))
-                    .expect("no next");
-                let end = dwt.cyccnt.read();
-                let diff = end.wrapping_sub(start);
-                defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
-
-                defmt::info!(
-                    "prev tx buffer: {:02x} {:02x}",
-                    prev_tx_buffer[0],
-                    prev_tx_buffer[1]
-                );
-                defmt::info!(
-                    "prev rx buffer: {:02x} {:02x}",
-                    prev_rx_buffer[0],
-                    prev_rx_buffer[1],
-                );
-                ready_tx_buffer = prev_tx_buffer;
-                ready_rx_buffer = prev_rx_buffer;
-            } else {
-                let start = dwt.cyccnt.read();
-                ready_tx_buffer[0] = 0x75 | 0x80;
-                ready_tx_buffer[1] = 0x00;
-                let (prev_tx_buffer, _) = tx_transfer
-                    .next_transfer(ready_tx_buffer, Some(2))
-                    .expect("no next");
-                let (prev_rx_buffer, _) = rx_transfer
-                    .next_transfer(ready_rx_buffer, Some(2))
-                    .expect("no next");
-                let end = dwt.cyccnt.read();
-                let diff = end.wrapping_sub(start);
-                defmt::info!("DMA SPI next_transfer cycle count: {}", diff);
-
-                let fifo_count = u16::from_be_bytes([prev_rx_buffer[1], prev_rx_buffer[2]]);
-                defmt::info!(
-                    "prev tx buffer: {:02x} {:02x} {:02x}",
-                    prev_tx_buffer[0],
-                    prev_tx_buffer[1],
-                    prev_tx_buffer[2],
-                );
-                defmt::info!(
-                    "prev rx buffer: {:02x} {:02x} {:02x} (fifo count: {})",
-                    prev_rx_buffer[0],
-                    prev_rx_buffer[1],
-                    prev_rx_buffer[2],
-                    fifo_count,
-                );
-                ready_tx_buffer = prev_tx_buffer;
-                ready_rx_buffer = prev_rx_buffer;
-            }
-
-            rx_transfer.wait();
-            cs.set_high();
-            reading_whoami = !reading_whoami;
-        }
+        // ----- FIFO stuff ------------------------------------------------------------------------
 
         // let mut total_samples = 0;
         // let mut fifo_buffer = [0u8; 16 * 10 + 1];
@@ -467,7 +496,21 @@ mod app {
         .build();
 
         Mono::start(delay.release().release(), 168_000_000);
-        (Shared { usb_dev, serial }, Local { dwt })
+        (
+            Shared {
+                usb_dev,
+                serial,
+                tx_buffer: Some(cx.local.TX_BUFFER_2),
+                rx_buffer: Some(cx.local.RX_BUFFER_2),
+                tx_transfer,
+                rx_transfer,
+            },
+            Local {
+                dwt,
+                imu_cs: cs,
+                prev_fifo_count: 0,
+            },
+        )
     }
 
     #[idle]
@@ -480,7 +523,7 @@ mod app {
         }
     }
 
-    #[task(priority = 2)]
+    #[task(priority = 1)]
     async fn blink(_cx: blink::Context) {
         defmt::info!("blink task");
         let mut instant = Mono::now();
@@ -509,9 +552,63 @@ mod app {
         });
     }
 
-    #[task(binds = SPI1, priority = 2)]
-    fn spi_interrupt(_cx: spi_interrupt::Context) {
-        defmt::info!("SPI interrupt");
+    #[task(binds = DMA2_STREAM0, shared = [tx_transfer, tx_buffer, rx_transfer, rx_buffer], local = [imu_cs, prev_fifo_count], priority = 3)]
+    fn imu_rx_handler(cx: imu_rx_handler::Context) {
+        use stm32f4xx_hal::dma::traits::StreamISR;
+        cx.local.imu_cs.set_high();
+        // defmt::info!("DMA RX complete");
+        (
+            cx.shared.rx_buffer,
+            cx.shared.rx_transfer,
+            cx.shared.tx_buffer,
+            cx.shared.tx_transfer,
+        )
+            .lock(|rx_buffer, rx_transfer, tx_buffer, tx_transfer| {
+                rx_transfer.clear_transfer_complete();
+                let ready_rx_buffer = rx_buffer.take().unwrap();
+                let ready_tx_buffer = tx_buffer.take().unwrap();
+                // cortex_m::asm::delay(10_000);
+                cx.local.imu_cs.set_low();
+
+                rx_transfer.pause(|_| {});
+                tx_transfer.pause(|_| {});
+
+                let (filled_tx_buffer, _) = tx_transfer.swap(ready_tx_buffer);
+                let (filled_rx_buffer, _) = rx_transfer.swap(ready_rx_buffer);
+
+                let fifo_count = if filled_tx_buffer[0] == 0x2E | 0x80 {
+                    // Expecting a FIFO count
+                    let fifo_count = u16::from_be_bytes([filled_rx_buffer[1], filled_rx_buffer[2]]);
+                    defmt::info!("fifo count: {}", fifo_count);
+                    fifo_count
+                } else if filled_tx_buffer[0] == 0x30 | 0x80 {
+                    // After that, request fifo count again
+                    filled_tx_buffer[0] = 0x2E | 0x80;
+                    0
+                } else {
+                    // Request
+                    defmt::info!("invalid value in tx buffer {:02x}", filled_tx_buffer[0]);
+                    0
+                };
+                let len = if fifo_count > 0 {
+                    // Request IMU data
+                    filled_tx_buffer[0] = 0x30 | 0x80;
+                    17
+                } else {
+                    filled_tx_buffer[0] = 0x2E | 0x80;
+                    3
+                };
+
+                let (prev_rx_buffer, _) = rx_transfer
+                    .next_transfer(filled_rx_buffer, Some(len))
+                    .unwrap();
+                let (prev_tx_buffer, _) = tx_transfer
+                    .next_transfer(filled_tx_buffer, Some(len))
+                    .unwrap();
+                *rx_buffer = Some(prev_rx_buffer);
+                *tx_buffer = Some(prev_tx_buffer);
+                *cx.local.prev_fifo_count = fifo_count;
+            });
     }
 }
 
