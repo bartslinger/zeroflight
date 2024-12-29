@@ -7,13 +7,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="continuously request fifo count and imu data">
-      <change afterPath="$PROJECT_DIR$/src/blink.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/usb.rs" afterDir="false" />
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="pass imu data via channel, separate files">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/imu.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -129,7 +125,7 @@
       <workItem from="1735260186651" duration="31961000" />
       <workItem from="1735344693828" duration="5933000" />
       <workItem from="1735355462982" duration="17435000" />
-      <workItem from="1735400491821" duration="9743000" />
+      <workItem from="1735400491821" duration="11203000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -243,7 +239,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735472410992</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="pass imu data via channel, separate files">
+      <option name="closed" value="true" />
+      <created>1735477526111</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1735477526111</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -262,6 +266,7 @@
     <MESSAGE value="read who-am-i in a loop with dma" />
     <MESSAGE value="modified hal to allow dma with variable length buffer" />
     <MESSAGE value="continuously request fifo count and imu data" />
-    <option name="LAST_COMMIT_MESSAGE" value="continuously request fifo count and imu data" />
+    <MESSAGE value="pass imu data via channel, separate files" />
+    <option name="LAST_COMMIT_MESSAGE" value="pass imu data via channel, separate files" />
   </component>
 </project>

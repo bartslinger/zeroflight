@@ -14,7 +14,7 @@ use panic_halt as _;
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
 mod app {
     use crate::blink::blink;
-    use crate::imu::imu_handler;
+    use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
@@ -192,7 +192,7 @@ mod app {
         delay.delay_us(300);
 
         cs.set_low();
-        let mut buf = [0x4C, 0xE0]; // big Endian, count records, hold last sample
+        let mut buf = [0x4C, 0xF0]; // big Endian, count records, hold last sample
         spi1.transfer_in_place(&mut buf).expect("IMU write failed");
         cs.set_high();
         delay.delay_us(300);
@@ -534,88 +534,46 @@ mod app {
         }
     }
 
+    #[task(priority = 2)]
+    async fn imu_handler(
+        _cx: imu_handler::Context,
+        mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 5>,
+    ) {
+        defmt::info!("imu handler spawned");
+        while let Ok(buf) = imu_data_receiver.recv().await {
+            let raw_temperature = buf[13];
+            let raw_acc_x = i16::from_be_bytes([buf[1], buf[2]]);
+            let raw_acc_y = i16::from_be_bytes([buf[3], buf[4]]);
+            let raw_acc_z = i16::from_be_bytes([buf[5], buf[6]]);
+            let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
+            let acc_y = -raw_acc_y as f32 * 9.80665 / 2048.0;
+            let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
+
+            let temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
+            // let temperature_celsius = (raw_temperature as f32 / 132.48) + 25.0;
+            defmt::info!(
+                "Temperature: {}\tAccel: ({},\t{},\t{})",
+                temperature_celsius,
+                acc_x,
+                acc_y,
+                acc_z
+            );
+        }
+    }
+
     extern "Rust" {
         #[task(priority = 1)]
         async fn blink(cx: blink::Context);
-        #[task(priority = 2)]
-        async fn imu_handler(
-            cx: imu_handler::Context,
-            imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 5>,
-        );
 
         #[task(binds = OTG_FS, local = [dwt], shared = [usb_dev, serial], priority = 1)]
         fn usb_tx(cx: usb_tx::Context);
-    }
 
-    #[task(
-        binds = DMA2_STREAM0,
-        shared = [tx_transfer, tx_buffer, rx_transfer, rx_buffer],
-        local = [imu_cs, prev_fifo_count, imu_data_sender],
-        priority = 5
-    )]
-    fn imu_rx_handler(cx: imu_rx_handler::Context) {
-        use stm32f4xx_hal::dma::traits::StreamISR;
-        cx.local.imu_cs.set_high();
-        let mut imu_data = (
-            cx.shared.rx_buffer,
-            cx.shared.rx_transfer,
-            cx.shared.tx_buffer,
-            cx.shared.tx_transfer,
-        )
-            .lock(|rx_buffer, rx_transfer, tx_buffer, tx_transfer| {
-                rx_transfer.clear_transfer_complete();
-                let ready_rx_buffer = rx_buffer.take().unwrap();
-                let ready_tx_buffer = tx_buffer.take().unwrap();
-                // cortex_m::asm::delay(10_000);
-                cx.local.imu_cs.set_low();
-
-                rx_transfer.pause(|_| {});
-                tx_transfer.pause(|_| {});
-
-                let (filled_tx_buffer, _) = tx_transfer.swap(ready_tx_buffer);
-                let (filled_rx_buffer, _) = rx_transfer.swap(ready_rx_buffer);
-
-                let mut imu_data = None;
-                let fifo_count = if filled_tx_buffer[0] == 0x2E | 0x80 {
-                    // Expecting a FIFO count
-                    let fifo_count = u16::from_be_bytes([filled_rx_buffer[1], filled_rx_buffer[2]]);
-                    // defmt::info!("fifo count: {}", fifo_count);
-                    fifo_count
-                } else if filled_tx_buffer[0] == 0x30 | 0x80 {
-                    // Got IMU data
-                    let mut output = [0u8; 16];
-                    output.copy_from_slice(&filled_rx_buffer[1..17]);
-                    imu_data = Some(output);
-                    // After that, request fifo count again
-                    filled_tx_buffer[0] = 0x2E | 0x80;
-                    0
-                } else {
-                    // Request
-                    defmt::info!("invalid value in tx buffer {:02x}", filled_tx_buffer[0]);
-                    0
-                };
-                let len = if fifo_count > 0 {
-                    // Request IMU data
-                    filled_tx_buffer[0] = 0x30 | 0x80;
-                    17
-                } else {
-                    filled_tx_buffer[0] = 0x2E | 0x80;
-                    3
-                };
-
-                let (prev_rx_buffer, _) = rx_transfer
-                    .next_transfer(filled_rx_buffer, Some(len))
-                    .unwrap();
-                let (prev_tx_buffer, _) = tx_transfer
-                    .next_transfer(filled_tx_buffer, Some(len))
-                    .unwrap();
-                *rx_buffer = Some(prev_rx_buffer);
-                *tx_buffer = Some(prev_tx_buffer);
-                *cx.local.prev_fifo_count = fifo_count;
-                imu_data
-            });
-        if let Some(imu_data) = imu_data.take() {
-            cx.local.imu_data_sender.try_send(imu_data).ok();
-        }
+        #[task(
+            binds = DMA2_STREAM0,
+            shared = [tx_transfer, tx_buffer, rx_transfer, rx_buffer],
+            local = [imu_cs, prev_fifo_count, imu_data_sender],
+            priority = 5
+        )]
+        fn imu_rx_handler(cx: imu_rx_handler::Context);
     }
 }
