@@ -17,6 +17,7 @@ mod app {
     use crate::blink::blink;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
+    use embedded_hal::pwm::SetDutyCycle;
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
@@ -66,6 +67,9 @@ mod app {
 
         let mut delay = cx.core.SYST.delay(&clocks);
 
+        let gpioa = cx.device.GPIOA.split();
+        let gpiob = cx.device.GPIOB.split();
+        let gpioc = cx.device.GPIOC.split();
         // -----------------------------------------------------------------------------------------
         // Enable cycle counter for counting clock ticks
         let mut dwt = cx.core.DWT;
@@ -79,7 +83,6 @@ mod app {
 
         // -----------------------------------------------------------------------------------------
         // Configure I2C1
-        let gpiob = cx.device.GPIOB.split();
         let scl = gpiob.pb8.into_alternate_open_drain();
         let sda = gpiob.pb9.into_alternate_open_drain();
         let mut i2c = stm32f4xx_hal::i2c::I2c::new(
@@ -122,7 +125,6 @@ mod app {
 
         // -----------------------------------------------------------------------------------------
         // Configure ICM-42688-P on SPI
-        let gpioa = cx.device.GPIOA.split();
 
         let sck = gpioa.pa5.into_alternate();
         let miso = gpioa.pa6.into_alternate();
@@ -153,6 +155,39 @@ mod app {
             cx.local.TX_BUFFER_2,
             cx.local.RX_BUFFER_2,
         );
+
+        // -----------------------------------------------------------------------------------------
+        // Configure timers for PWM output
+
+        // This is the configuration in INAV:
+        //     DEF_TIM(TIM4,   CH2, PB7,  TIM_USE_OUTPUT_AUTO,   1, 0), // S1 D(1,3,2)
+        //     DEF_TIM(TIM4,   CH1, PB6,  TIM_USE_OUTPUT_AUTO,   1, 0), // S2 D(1,0,2)
+        //
+        //     DEF_TIM(TIM3,   CH3, PB0,  TIM_USE_OUTPUT_AUTO,   1, 0), // S3 D(1,7,5)
+        //     DEF_TIM(TIM3,   CH4, PB1,  TIM_USE_OUTPUT_AUTO,   1, 0), // S4 D(1,2,5)
+        //     DEF_TIM(TIM8,   CH3, PC8,  TIM_USE_OUTPUT_AUTO,   1, 0), // S5 D(2,4,7)
+        //     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
+
+        let (_, (_, _, tim3_ch3, tim3_ch4)) = cx.device.TIM3.pwm_us(20_000.micros(), &clocks);
+
+        let (_, (_, _, tim8_ch3, tim8_ch4)) = cx.device.TIM8.pwm_us(20_000.micros(), &clocks);
+
+        let mut s3 = tim3_ch3.with(gpiob.pb0);
+        let mut s4 = tim3_ch4.with(gpiob.pb1);
+        let mut s5 = tim8_ch3.with(gpioc.pc8);
+        let mut s6 = tim8_ch4.with(gpioc.pc9);
+
+        s3.set_duty(1500);
+        s3.enable();
+
+        s4.set_duty(1500);
+        s4.enable();
+
+        s5.set_duty(1500);
+        s5.enable();
+
+        s6.set_duty(1500);
+        s6.enable();
 
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
@@ -250,13 +285,13 @@ mod app {
             let (dcm, gyro_bias) =
                 ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.001);
 
-            defmt::info!(
-                "T: {}\troll: {}\tpitch: {}\tyaw: {}",
-                timestamp,
-                dcm.roll * 180.0 / PI,
-                dcm.pitch * 180.0 / PI,
-                dcm.yaw * 180.0 / PI
-            );
+            // defmt::info!(
+            //     "T: {}\troll: {}\tpitch: {}\tyaw: {}",
+            //     timestamp,
+            //     dcm.roll * 180.0 / PI,
+            //     dcm.pitch * 180.0 / PI,
+            //     dcm.yaw * 180.0 / PI
+            // );
         }
     }
 

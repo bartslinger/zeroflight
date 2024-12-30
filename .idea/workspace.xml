@@ -7,10 +7,8 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="cleanup icm42688p and unused imports">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="use a crate for attitude estimation (gyro sign still wrong?)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -127,7 +125,7 @@
       <workItem from="1735344693828" duration="5933000" />
       <workItem from="1735355462982" duration="17435000" />
       <workItem from="1735400491821" duration="17809000" />
-      <workItem from="1735530371688" duration="5872000" />
+      <workItem from="1735530371688" duration="7860000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -281,7 +279,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735536685984</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="use a crate for attitude estimation (gyro sign still wrong?)">
+      <option name="closed" value="true" />
+      <created>1735539861775</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1735539861775</updated>
+    </task>
+    <option name="localTasksCounter" value="21" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -305,6 +311,7 @@
     <MESSAGE value="basic idle loop calculations" />
     <MESSAGE value="create icm42688p driver but not generic" />
     <MESSAGE value="cleanup icm42688p and unused imports" />
-    <option name="LAST_COMMIT_MESSAGE" value="cleanup icm42688p and unused imports" />
+    <MESSAGE value="use a crate for attitude estimation (gyro sign still wrong?)" />
+    <option name="LAST_COMMIT_MESSAGE" value="use a crate for attitude estimation (gyro sign still wrong?)" />
   </component>
 </project>
