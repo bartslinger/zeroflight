@@ -5,6 +5,7 @@
 //#![deny(missing_docs)]
 
 mod blink;
+mod crsf;
 mod icm42688p;
 mod imu;
 mod usb;
@@ -12,14 +13,13 @@ mod usb;
 use defmt_rtt as _;
 use panic_halt as _;
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
+#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP])]
 mod app {
     use crate::blink::blink;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
-    use embedded_hal::pwm::SetDutyCycle;
     use rtic_monotonics::systick::prelude::*;
-    use stm32f4xx_hal::gpio;
+    use stm32f4xx_hal::{gpio, nb};
 
     const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
@@ -38,6 +38,11 @@ mod app {
             crate::icm42688p::Icm42688pDmaContext<gpio::PA4<gpio::Output<gpio::PushPull>>>,
         prev_fifo_count: u16,
         imu_data_sender: rtic_sync::channel::Sender<'static, [u8; 16], 5>,
+        crsf_serial: stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>,
+        crsf_data_sender: rtic_sync::channel::Sender<'static, u8, 64>,
+        s1: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM4, 1>,
+        s5: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 2>,
+        s6: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 3>,
     }
 
     #[init(local = [
@@ -55,6 +60,9 @@ mod app {
 
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 5);
         imu_handler::spawn(imu_data_receiver).ok();
+
+        let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
+        crsf_parser::spawn(crsf_data_receiver).ok();
 
         defmt::info!("Clock setup");
         let rcc = cx.device.RCC.constrain();
@@ -169,13 +177,22 @@ mod app {
         //     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
 
         let (_, (_, _, tim3_ch3, tim3_ch4)) = cx.device.TIM3.pwm_us(20_000.micros(), &clocks);
+        let (_, (tim4_ch1, tim4_ch2, _, _)) = cx.device.TIM4.pwm_us(20_000.micros(), &clocks);
 
         let (_, (_, _, tim8_ch3, tim8_ch4)) = cx.device.TIM8.pwm_us(20_000.micros(), &clocks);
 
+        let mut s1 = tim4_ch2.with(gpiob.pb7);
+        let mut s2 = tim4_ch1.with(gpiob.pb6);
         let mut s3 = tim3_ch3.with(gpiob.pb0);
         let mut s4 = tim3_ch4.with(gpiob.pb1);
         let mut s5 = tim8_ch3.with(gpioc.pc8);
         let mut s6 = tim8_ch4.with(gpioc.pc9);
+
+        s1.set_duty(900);
+        s1.enable();
+
+        s2.set_duty(900);
+        s2.enable();
 
         s3.set_duty(1500);
         s3.enable();
@@ -188,6 +205,22 @@ mod app {
 
         s6.set_duty(1500);
         s6.enable();
+
+        // -----------------------------------------------------------------------------------------
+        // Serial ELRS receiver
+
+        let usart1 = cx.device.USART1;
+        let tx = gpioa.pa9;
+        let rx = gpioa.pa10;
+
+        let mut crsf_serial = usart1
+            .serial(
+                (tx, rx),
+                stm32f4xx_hal::serial::Config::default().baudrate(420_000.bps()),
+                &clocks,
+            )
+            .unwrap();
+        crsf_serial.listen(stm32f4xx_hal::serial::Event::RxNotEmpty);
 
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
@@ -229,6 +262,11 @@ mod app {
                 icm42688p_dma_context,
                 prev_fifo_count: 0,
                 imu_data_sender,
+                crsf_serial,
+                crsf_data_sender,
+                s1,
+                s5,
+                s6,
             },
         )
     }
@@ -279,10 +317,10 @@ mod app {
             let gyro_x = raw_gyro_x as f32 * PI / 180.0 / 16.4;
             let gyro_y = raw_gyro_y as f32 * PI / 180.0 / 16.4;
             let gyro_z = raw_gyro_z as f32 * PI / 180.0 / 16.4;
-            let temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
-            let timestamp: u32 = raw_timestamp as u32 * 32 / 30;
+            let _temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
+            let _timestamp: u32 = raw_timestamp as u32 * 32 / 30;
 
-            let (dcm, gyro_bias) =
+            let (_dcm, _gyro_bias) =
                 ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.001);
 
             // defmt::info!(
@@ -292,6 +330,73 @@ mod app {
             //     dcm.pitch * 180.0 / PI,
             //     dcm.yaw * 180.0 / PI
             // );
+        }
+    }
+
+    #[task(priority = 3, local = [s1, s5, s6])]
+    async fn crsf_parser(
+        cx: crsf_parser::Context,
+        mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
+    ) {
+        defmt::info!("starting crsf parser");
+        loop {
+            // Check sync byte
+            if rx.recv().await.unwrap() != 0xC8 {
+                continue;
+            }
+            let length = rx.recv().await.unwrap();
+            if length != 24 {
+                continue;
+            }
+            // Check message type RC Channels Packed Payload
+            if rx.recv().await.unwrap() != 0x16 {
+                continue;
+            }
+            let mut channel_bytes = [0_u8; 22];
+            for i in 0..22 {
+                channel_bytes[i] = rx.recv().await.unwrap();
+            }
+            let channels = crate::crsf::Channels::from_bytes(channel_bytes);
+            let rc_in = crate::crsf::RcPwmPositions::from(channels);
+            defmt::info!(
+                "channel info package ready {} {} {} {}",
+                rc_in.roll,
+                rc_in.pitch,
+                rc_in.throttle,
+                rc_in.yaw,
+            );
+            cx.local.s1.set_duty(rc_in.throttle);
+            cx.local
+                .s5
+                .set_duty(((rc_in.pitch as i16 - 1500) * -1 + 1500) as u16);
+            cx.local.s6.set_duty(rc_in.pitch);
+        }
+    }
+
+    #[task(
+        binds = USART1,
+        shared = [],
+        local = [crsf_serial, crsf_data_sender],
+        priority = 5,
+    )]
+    fn usart1_irq(cx: usart1_irq::Context) {
+        use stm32f4xx_hal::prelude::*;
+        let serial = cx.local.crsf_serial;
+        if serial.is_rx_not_empty() {
+            let byte = match serial.read() {
+                Ok(v) => v,
+                Err(nb::Error::Other(e)) => {
+                    defmt::info!("Error in receiving usart1 byte: {}", e as u32);
+                    return;
+                }
+                Err(nb::Error::WouldBlock) => {
+                    defmt::info!("Error in receiving usart1 byte: would block");
+                    return;
+                }
+            };
+            if let Err(_e) = cx.local.crsf_data_sender.try_send(byte) {
+                defmt::error!("send error from usart1 interrupt");
+            };
         }
     }
 
