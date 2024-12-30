@@ -7,12 +7,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="basic idle loop calculations">
-      <change afterPath="$PROJECT_DIR$/src/icm42688p.rs" afterDir="false" />
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="cleanup icm42688p and unused imports">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/imu.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -129,7 +127,7 @@
       <workItem from="1735344693828" duration="5933000" />
       <workItem from="1735355462982" duration="17435000" />
       <workItem from="1735400491821" duration="17809000" />
-      <workItem from="1735530371688" duration="3861000" />
+      <workItem from="1735530371688" duration="5872000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -267,7 +265,23 @@
       <option name="project" value="LOCAL" />
       <updated>1735481174999</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="create icm42688p driver but not generic">
+      <option name="closed" value="true" />
+      <created>1735536432191</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1735536432191</updated>
+    </task>
+    <task id="LOCAL-00019" summary="cleanup icm42688p and unused imports">
+      <option name="closed" value="true" />
+      <created>1735536685984</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1735536685984</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -289,6 +303,8 @@
     <MESSAGE value="pass imu data via channel, separate files" />
     <MESSAGE value="imu calculate values" />
     <MESSAGE value="basic idle loop calculations" />
-    <option name="LAST_COMMIT_MESSAGE" value="basic idle loop calculations" />
+    <MESSAGE value="create icm42688p driver but not generic" />
+    <MESSAGE value="cleanup icm42688p and unused imports" />
+    <option name="LAST_COMMIT_MESSAGE" value="cleanup icm42688p and unused imports" />
   </component>
 </project>

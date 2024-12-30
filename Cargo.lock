@@ -81,6 +81,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
+name = "dcmimu"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "692b1c8923315ac22103c1890512597baf543b95f2eebd66f572ffb1ff8f0170"
+dependencies = [
+ "libm",
+]
+
+[[package]]
 name = "defmt"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -316,6 +325,12 @@ dependencies = [
  "equivalent",
  "hashbrown",
 ]
+
+[[package]]
+name = "libm"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fc7aa29613bd6a620df431842069224d8bc9011086b1db4c0e0cd47fa03ec9a"
 
 [[package]]
 name = "litrs"
@@ -687,6 +702,7 @@ name = "zeroflight"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "dcmimu",
  "defmt",
  "defmt-rtt",
  "embedded-hal 1.0.0",

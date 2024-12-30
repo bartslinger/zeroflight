@@ -20,6 +20,8 @@ mod app {
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
+    const PI: f32 = 3.14159265358979323846264338327950288_f32;
+
     systick_monotonic!(Mono, 1000);
 
     #[shared]
@@ -226,22 +228,34 @@ mod app {
         mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 5>,
     ) {
         defmt::info!("imu handler spawned");
+        let mut ahrs = dcmimu::DCMIMU::new();
         while let Ok(buf) = imu_data_receiver.recv().await {
-            let raw_temperature = buf[13];
             let raw_acc_x = i16::from_be_bytes([buf[1], buf[2]]);
             let raw_acc_y = i16::from_be_bytes([buf[3], buf[4]]);
             let raw_acc_z = i16::from_be_bytes([buf[5], buf[6]]);
+            let raw_gyro_x = i16::from_be_bytes([buf[7], buf[8]]);
+            let raw_gyro_y = i16::from_be_bytes([buf[9], buf[10]]);
+            let raw_gyro_z = i16::from_be_bytes([buf[11], buf[12]]);
+            let raw_temperature = buf[13];
+            let raw_timestamp = u16::from_be_bytes([buf[14], buf[15]]);
             let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
             let acc_y = -raw_acc_y as f32 * 9.80665 / 2048.0;
             let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
-
+            let gyro_x = raw_gyro_x as f32 * PI / 180.0 / 16.4;
+            let gyro_y = raw_gyro_y as f32 * PI / 180.0 / 16.4;
+            let gyro_z = raw_gyro_z as f32 * PI / 180.0 / 16.4;
             let temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
+            let timestamp: u32 = raw_timestamp as u32 * 32 / 30;
+
+            let (dcm, gyro_bias) =
+                ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.001);
+
             defmt::info!(
-                "T: {} A: {} {} {}",
-                temperature_celsius,
-                acc_x,
-                acc_y,
-                acc_z
+                "T: {}\troll: {}\tpitch: {}\tyaw: {}",
+                timestamp,
+                dcm.roll * 180.0 / PI,
+                dcm.pitch * 180.0 / PI,
+                dcm.yaw * 180.0 / PI
             );
         }
     }
