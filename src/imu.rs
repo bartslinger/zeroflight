@@ -1,5 +1,4 @@
 pub(crate) fn imu_rx_handler(cx: crate::app::imu_rx_handler::Context<'_>) {
-    use rtic::mutex_prelude::*;
     use stm32f4xx_hal::dma::traits::StreamISR;
     let cs = &mut cx.local.icm42688p_dma_context.cs;
     let rx_transfer = &mut cx.local.icm42688p_dma_context.rx_transfer;

@@ -17,43 +17,20 @@ mod app {
     use crate::blink::blink;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
-    use core::any::Any;
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
     systick_monotonic!(Mono, 1000);
 
-    type TxTransfer = stm32f4xx_hal::dma::Transfer<
-        stm32f4xx_hal::dma::Stream3<stm32f4xx_hal::pac::DMA2>,
-        3,
-        stm32f4xx_hal::spi::Tx<stm32f4xx_hal::pac::SPI1>,
-        stm32f4xx_hal::dma::MemoryToPeripheral,
-        &'static mut [u8; 129],
-    >;
-
-    type RxTransfer = stm32f4xx_hal::dma::Transfer<
-        stm32f4xx_hal::dma::Stream0<stm32f4xx_hal::pac::DMA2>,
-        3,
-        stm32f4xx_hal::spi::Rx<stm32f4xx_hal::pac::SPI1>,
-        stm32f4xx_hal::dma::PeripheralToMemory,
-        &'static mut [u8; 129],
-    >;
-
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
-        // tx_buffer: Option<&'static mut [u8; 129]>,
-        // rx_buffer: Option<&'static mut [u8; 129]>,
-        // tx_transfer: TxTransfer,
-        // rx_transfer: RxTransfer,
     }
 
     #[local]
     struct Local {
-        // led: gpio::PC13<Output<PushPull>>,
         dwt: cortex_m::peripheral::DWT,
-        // imu_cs: gpio::PA4<gpio::Output<gpio::PushPull>>,
         icm42688p_dma_context:
             crate::icm42688p::Icm42688pDmaContext<gpio::PA4<gpio::Output<gpio::PushPull>>>,
         prev_fifo_count: u16,
@@ -64,8 +41,6 @@ mod app {
         EP_MEMORY: [u32; 1024] = [0; 1024],
         USB_BUS: Option<usb_device::bus::UsbBusAllocator<stm32f4xx_hal::otg_fs::UsbBusType>> =
             None,
-        READ_WHO_AM_I: [u8; 2] = [0x75 | 0x80, 0x00],
-        ANSWER: [u8; 2] = [0xAA, 0xAA],
         TX_BUFFER_1: [u8; 129] = [0x00; 129],
         TX_BUFFER_2: [u8; 129] = [0x00; 129],
         RX_BUFFER_1: [u8; 129] = [0x00; 129],
@@ -74,11 +49,6 @@ mod app {
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
         defmt::info!("init");
-
-        // cx.local.TX_BUFFER_1[0] = 0x75 | 0x80;
-        // cx.local.TX_BUFFER_2[0] = 0x75 | 0x80;
-        cx.local.TX_BUFFER_1[0] = 0x2E | 0x80;
-        cx.local.TX_BUFFER_2[0] = 0x2E | 0x80;
 
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 5);
         imu_handler::spawn(imu_data_receiver).ok();
@@ -156,7 +126,7 @@ mod app {
         let miso = gpioa.pa6.into_alternate();
         let mosi = gpioa.pa7.into_alternate();
 
-        let mut spi1 = stm32f4xx_hal::spi::Spi::new(
+        let spi1 = stm32f4xx_hal::spi::Spi::new(
             cx.device.SPI1,
             (sck, miso, mosi),
             stm32f4xx_hal::spi::Mode {
@@ -216,14 +186,7 @@ mod app {
 
         Mono::start(delay.release().release(), 168_000_000);
         (
-            Shared {
-                usb_dev,
-                serial,
-                // tx_buffer: Some(cx.local.TX_BUFFER_2),
-                // rx_buffer: Some(cx.local.RX_BUFFER_2),
-                // tx_transfer,
-                // rx_transfer,
-            },
+            Shared { usb_dev, serial },
             Local {
                 dwt,
                 icm42688p_dma_context,

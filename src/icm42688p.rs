@@ -116,10 +116,6 @@ impl<CS: CsPin> Icm42688p<CS> {
         self.cs.set_high();
     }
 
-    pub(crate) fn test_high(&mut self) {
-        self.cs.set_high();
-    }
-
     pub(crate) fn start_dma(
         mut self,
         tx_stream: stm32f4xx_hal::dma::StreamX<stm32f4xx_hal::pac::DMA2, 3>,
@@ -129,6 +125,9 @@ impl<CS: CsPin> Icm42688p<CS> {
         tx_buffer_2: &'static mut [u8; 129],
         rx_buffer_2: &'static mut [u8; 129],
     ) -> Icm42688pDmaContext<CS> {
+        tx_buffer_1[0] = 0x2E | 0x80;
+        tx_buffer_2[0] = 0x2E | 0x80;
+
         let (tx, rx) = self.spi.use_dma().txrx();
         let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
             rx_stream,
