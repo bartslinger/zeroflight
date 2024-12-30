@@ -689,6 +689,7 @@ dependencies = [
  "cortex-m",
  "defmt",
  "defmt-rtt",
+ "embedded-hal 1.0.0",
  "panic-halt",
  "rtic",
  "rtic-monotonics",

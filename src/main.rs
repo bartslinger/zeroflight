@@ -5,6 +5,7 @@
 //#![deny(missing_docs)]
 
 mod blink;
+mod icm42688p;
 mod imu;
 mod usb;
 
@@ -16,6 +17,7 @@ mod app {
     use crate::blink::blink;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
+    use core::any::Any;
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
@@ -41,17 +43,19 @@ mod app {
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
-        tx_buffer: Option<&'static mut [u8; 129]>,
-        rx_buffer: Option<&'static mut [u8; 129]>,
-        tx_transfer: TxTransfer,
-        rx_transfer: RxTransfer,
+        // tx_buffer: Option<&'static mut [u8; 129]>,
+        // rx_buffer: Option<&'static mut [u8; 129]>,
+        // tx_transfer: TxTransfer,
+        // rx_transfer: RxTransfer,
     }
 
     #[local]
     struct Local {
         // led: gpio::PC13<Output<PushPull>>,
         dwt: cortex_m::peripheral::DWT,
-        imu_cs: gpio::PA4<gpio::Output<gpio::PushPull>>,
+        // imu_cs: gpio::PA4<gpio::Output<gpio::PushPull>>,
+        icm42688p_dma_context:
+            crate::icm42688p::Icm42688pDmaContext<gpio::PA4<gpio::Output<gpio::PushPull>>>,
         prev_fifo_count: u16,
         imu_data_sender: rtic_sync::channel::Sender<'static, [u8; 16], 5>,
     }
@@ -165,126 +169,18 @@ mod app {
 
         let mut cs = gpioa.pa4.into_push_pull_output();
         cs.set_high();
-        // delay
-        delay.delay_ms(1);
-
-        defmt::info!("IMU initializing...");
-
-        // disable power on accel and gyro for configuration (see datasheet 12.9)
-        cs.set_low();
-        let mut buf = [0x4E, 0x00];
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        // min 200us sleep recommended
-        delay.delay_us(300);
-
-        // configure the FIFO
-        cs.set_low();
-        let mut buf = [0x16, 0x80]; // FIFO_CONFIG STOP-on-full
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        delay.delay_us(300);
-
-        cs.set_low();
-        let mut buf = [0x5F, 0x07]; // FIFO_CONFIG1 enable temp, accel, gyro
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        delay.delay_us(300);
-
-        cs.set_low();
-        let mut buf = [0x4C, 0xF0]; // big Endian, count records, hold last sample
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        delay.delay_us(300);
-
-        cs.set_low();
-        let mut buf = [0x4B, 0x02]; // SIGNAL_PATH_RESET flush the FIFO
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        delay.delay_us(300);
-
-        // // read power bits
-        // cs.set_low();
-        // let mut buf = [0x4E | 0x80, 0x00];
-        // spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        // cs.set_high();
-        // defmt::info!("Power bits: {:02x}", buf[1]);
-        // delay.delay_ms(15);
-
-        // set accel range
-        cs.set_low();
-        let mut buf = [0x50, (0x00 << 5) | (0x06 & 0x0F)];
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        delay.delay_ms(15);
-
-        // enable power on accel and gyro
-        cs.set_low();
-        let mut buf = [0x4E, 0x0F];
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        cs.set_high();
-        // min 200us sleep recommended
-        delay.delay_us(300);
-
-        // try a two-step who-am-i
-        let start = dwt.cyccnt.read();
-        cs.set_low();
-        let mut buf = [0x75 | 0x80];
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        defmt::info!("was 0x75: {:02x}", buf[0]);
-        let mut buf = [0x00];
-        spi1.transfer_in_place(&mut buf).expect("IMU write failed");
-        defmt::info!("who am i: {:02x}", buf[0]);
-        cs.set_high();
-        let end = dwt.cyccnt.read();
-        let diff = end.wrapping_sub(start);
-        defmt::info!("SPI read cycle count: {}", diff);
+        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs);
+        icm42688p.init(&mut delay);
 
         // -----------------------------------------------------------------------------------------
-        // try a who-am-i with dma
-        let (tx, rx) = spi1.use_dma().txrx();
-
-        let tx_stream = dma2.3;
-        let rx_stream = dma2.0;
-
-        let start = dwt.cyccnt.read();
-        let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
-            rx_stream,
-            rx,
-            cx.local.RX_BUFFER_1,
-            Some(3),
-            None,
-            stm32f4xx_hal::dma::config::DmaConfig::default()
-                .memory_increment(true)
-                .transfer_complete_interrupt(true),
-        );
-        let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
-            tx_stream,
-            tx,
+        let icm42688p_dma_context = icm42688p.start_dma(
+            dma2.3,
+            dma2.0,
             cx.local.TX_BUFFER_1,
-            Some(3),
-            None,
-            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
+            cx.local.RX_BUFFER_1,
+            cx.local.TX_BUFFER_2,
+            cx.local.RX_BUFFER_2,
         );
-        let end = dwt.cyccnt.read();
-        let diff = end.wrapping_sub(start);
-        defmt::info!("DMA SPI config cycle count: {}", diff);
-
-        let start = dwt.cyccnt.read();
-        cs.set_low();
-        // starting rx_transfer before tx_transfer seems more robust
-        // (works with even large delay between the two calls)
-        rx_transfer.start(|_rx| {
-            defmt::info!("rx transfer started");
-        });
-        // delay.delay_ms(1000);
-        tx_transfer.start(|_tx| {
-            defmt::info!("tx transfer started");
-        });
-
-        let end = dwt.cyccnt.read();
-        let diff = end.wrapping_sub(start);
-        defmt::info!("DMA SPI start cycle count: {}", diff);
 
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
@@ -323,14 +219,14 @@ mod app {
             Shared {
                 usb_dev,
                 serial,
-                tx_buffer: Some(cx.local.TX_BUFFER_2),
-                rx_buffer: Some(cx.local.RX_BUFFER_2),
-                tx_transfer,
-                rx_transfer,
+                // tx_buffer: Some(cx.local.TX_BUFFER_2),
+                // rx_buffer: Some(cx.local.RX_BUFFER_2),
+                // tx_transfer,
+                // rx_transfer,
             },
             Local {
                 dwt,
-                imu_cs: cs,
+                icm42688p_dma_context,
                 prev_fifo_count: 0,
                 imu_data_sender,
             },
@@ -377,6 +273,13 @@ mod app {
             let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
 
             let temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
+            defmt::info!(
+                "T: {} A: {} {} {}",
+                temperature_celsius,
+                acc_x,
+                acc_y,
+                acc_z
+            );
         }
     }
 
@@ -389,8 +292,8 @@ mod app {
 
         #[task(
             binds = DMA2_STREAM0,
-            shared = [tx_transfer, tx_buffer, rx_transfer, rx_buffer],
-            local = [imu_cs, prev_fifo_count, imu_data_sender],
+            shared = [],
+            local = [icm42688p_dma_context, prev_fifo_count, imu_data_sender],
             priority = 5
         )]
         fn imu_rx_handler(cx: imu_rx_handler::Context);
