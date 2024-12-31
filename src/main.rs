@@ -431,7 +431,15 @@ mod app {
         mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
     ) {
         use futures::{select_biased, FutureExt};
-        defmt::info!("control task started");
+
+        enum FlightMode {
+            Stabilized,
+            Manual,
+            Failsafe,
+        }
+        let mut flight_mode = FlightMode::Stabilized;
+
+        let mut saved_rc_timestamp = Mono::now();
         let mut saved_rc_state = RcState {
             armed: false,
             roll: 1500,
@@ -441,6 +449,7 @@ mod app {
             mode: 1000,
         };
 
+        defmt::info!("control task started");
         loop {
             enum ControlTaskEvent {
                 RcState(RcState),
@@ -458,14 +467,16 @@ mod app {
                 }
             };
 
-            let output_command = match event {
+            match event {
                 ControlTaskEvent::RcState(rc_state) => {
                     saved_rc_state = rc_state;
+                    saved_rc_timestamp = Mono::now();
                     if rc_state.mode < 1450 {
-                        // save the command and use it in stabilized mode
-                        None
+                        flight_mode = FlightMode::Stabilized;
+                        // stabilized mode will be active on next ahrs sample
                     } else {
                         // manual mode
+                        flight_mode = FlightMode::Manual;
                         let output_command = crate::OutputCommand {
                             armed: rc_state.armed,
                             roll: rc_state.roll,
@@ -473,30 +484,43 @@ mod app {
                             throttle: rc_state.throttle,
                             yaw: rc_state.yaw,
                         };
-                        Some(output_command)
+                        pwm_output_sender.try_send(output_command).ok();
                     }
                 }
                 ControlTaskEvent::AhrsState(ahrs_state) => {
-                    if saved_rc_state.mode >= 1450 {
-                        // we don't do anything with the ahrs data in manual mode
-                        None
-                    } else {
-                        let pitch_commad = (saved_rc_state.pitch as i16
-                            + (ahrs_state.pitch * 180.0 / PI * 20.0) as i16)
-                            as u16;
-                        let output_command = crate::OutputCommand {
-                            armed: saved_rc_state.armed,
-                            roll: saved_rc_state.roll,
-                            pitch: pitch_commad,
-                            throttle: saved_rc_state.throttle,
-                            yaw: saved_rc_state.yaw,
-                        };
-                        Some(output_command)
+                    if let Some(dt) = Mono::now().checked_duration_since(saved_rc_timestamp) {
+                        if saved_rc_state.armed && dt.to_millis() > 500 {
+                            flight_mode = FlightMode::Failsafe;
+                        }
+                    }
+
+                    match flight_mode {
+                        FlightMode::Manual => {}
+                        FlightMode::Stabilized => {
+                            let pitch_commad = (saved_rc_state.pitch as i16
+                                + (ahrs_state.pitch * 180.0 / PI * 20.0) as i16)
+                                as u16;
+                            let output_command = crate::OutputCommand {
+                                armed: saved_rc_state.armed,
+                                roll: saved_rc_state.roll,
+                                pitch: pitch_commad,
+                                throttle: saved_rc_state.throttle,
+                                yaw: saved_rc_state.yaw,
+                            };
+                            pwm_output_sender.try_send(output_command).ok();
+                        }
+                        FlightMode::Failsafe => {
+                            let output_command = crate::OutputCommand {
+                                armed: false,
+                                roll: 1500,
+                                pitch: 1200,
+                                throttle: 900,
+                                yaw: 1500,
+                            };
+                            pwm_output_sender.try_send(output_command).ok();
+                        }
                     }
                 }
-            };
-            if let Some(v) = output_command {
-                pwm_output_sender.try_send(v).ok();
             }
         }
     }
