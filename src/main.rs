@@ -302,7 +302,14 @@ mod app {
     ) {
         defmt::info!("imu handler spawned");
         let mut ahrs = dcmimu::DCMIMU::new();
+        let mut i = 0;
+        let mut prev_timestamp = 0;
         while let Ok(buf) = imu_data_receiver.recv().await {
+            i += 1;
+            if i % 10 != 0 {
+                // only do 100Hz, this imu estimator is slow
+                continue;
+            }
             let raw_acc_x = i16::from_be_bytes([buf[1], buf[2]]);
             let raw_acc_y = i16::from_be_bytes([buf[3], buf[4]]);
             let raw_acc_z = i16::from_be_bytes([buf[5], buf[6]]);
@@ -314,22 +321,29 @@ mod app {
             let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
             let acc_y = -raw_acc_y as f32 * 9.80665 / 2048.0;
             let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
-            let gyro_x = raw_gyro_x as f32 * PI / 180.0 / 16.4;
+            let gyro_x = -raw_gyro_x as f32 * PI / 180.0 / 16.4;
             let gyro_y = raw_gyro_y as f32 * PI / 180.0 / 16.4;
-            let gyro_z = raw_gyro_z as f32 * PI / 180.0 / 16.4;
+            let gyro_z = -raw_gyro_z as f32 * PI / 180.0 / 16.4;
             let _temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
-            let _timestamp: u32 = raw_timestamp as u32 * 32 / 30;
+            let timestamp: u16 = (raw_timestamp as u32 * 32 / 30) as u16;
+            let diff = timestamp.wrapping_sub(prev_timestamp);
+            prev_timestamp = timestamp;
 
-            let (_dcm, _gyro_bias) =
-                ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.001);
+            let (dcm, _gyro_bias) =
+                ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.01);
 
-            // defmt::info!(
-            //     "T: {}\troll: {}\tpitch: {}\tyaw: {}",
-            //     timestamp,
-            //     dcm.roll * 180.0 / PI,
-            //     dcm.pitch * 180.0 / PI,
-            //     dcm.yaw * 180.0 / PI
-            // );
+            if i % 1000 == 0 {
+                // defmt::info!("gyro x: {}\ty: {}\tz: {}", gyro_x, gyro_y, gyro_z);
+                // defmt::info!("accel x: {}\ty: {}\tz: {}", acc_x, acc_y, acc_z);
+                defmt::info!(
+                    "T: {}\troll: {}\tpitch: {}\tyaw: {}",
+                    diff,
+                    dcm.roll * 180.0 / PI,
+                    dcm.pitch * 180.0 / PI,
+                    dcm.yaw * 180.0 / PI
+                );
+                i = 0;
+            }
         }
     }
 
