@@ -2,6 +2,7 @@
 use modular_bitfield::prelude::*;
 
 pub(crate) struct RcPwmPositions {
+    pub(crate) armed: bool,
     pub(crate) roll: u16,
     pub(crate) pitch: u16,
     pub(crate) throttle: u16,
@@ -40,17 +41,6 @@ pub(crate) struct Channels {
     pub(crate) channel_16: B11,
 }
 
-fn ticks_to_us(ticks: u16) -> u16 {
+pub(crate) fn ticks_to_us(ticks: u16) -> u16 {
     ((ticks as i16 - 992) * 5 / 8 + 1500) as u16
-}
-
-impl From<Channels> for RcPwmPositions {
-    fn from(channels: Channels) -> Self {
-        RcPwmPositions {
-            roll: ticks_to_us(channels.channel_01()),
-            pitch: ticks_to_us(channels.channel_02()),
-            throttle: ticks_to_us(channels.channel_03()),
-            yaw: ticks_to_us(channels.channel_04()),
-        }
-    }
 }

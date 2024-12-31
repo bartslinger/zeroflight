@@ -16,6 +16,7 @@ use panic_halt as _;
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP])]
 mod app {
     use crate::blink::blink;
+    use crate::crsf::RcPwmPositions;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
     use rtic_monotonics::systick::prelude::*;
@@ -353,6 +354,8 @@ mod app {
         mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
     ) {
         defmt::info!("starting crsf parser");
+        let mut armed = false;
+        let mut previous_armed_channel_state: u16 = 1000;
         loop {
             // Check sync byte
             if rx.recv().await.unwrap() != 0xC8 {
@@ -371,9 +374,30 @@ mod app {
                 channel_bytes[i] = rx.recv().await.unwrap();
             }
             let channels = crate::crsf::Channels::from_bytes(channel_bytes);
-            let rc_in = crate::crsf::RcPwmPositions::from(channels);
+            let roll = crate::crsf::ticks_to_us(channels.channel_01());
+            let pitch = crate::crsf::ticks_to_us(channels.channel_02());
+            let throttle = crate::crsf::ticks_to_us(channels.channel_03());
+            let yaw = crate::crsf::ticks_to_us(channels.channel_04());
+            let armed_channel = crate::crsf::ticks_to_us(channels.channel_05());
+
+            if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
+                armed = true;
+            }
+            if armed_channel < 1500 {
+                armed = false;
+            }
+            previous_armed_channel_state = armed_channel;
+
+            let rc_in = RcPwmPositions {
+                armed,
+                roll,
+                pitch,
+                throttle,
+                yaw,
+            };
             defmt::info!(
-                "channel info package ready {} {} {} {}",
+                "channel info package ready {} {} {} {} {}",
+                rc_in.armed,
                 rc_in.roll,
                 rc_in.pitch,
                 rc_in.throttle,
