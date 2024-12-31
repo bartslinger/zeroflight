@@ -13,6 +13,14 @@ mod usb;
 use defmt_rtt as _;
 use panic_halt as _;
 
+struct OutputCommand {
+    armed: bool,
+    roll: u16,
+    pitch: u16,
+    throttle: u16,
+    yaw: u16,
+}
+
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::blink::blink;
@@ -62,10 +70,15 @@ mod app {
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
+        let (pwm_output_sender, pwm_output_receiver) =
+            rtic_sync::make_channel!(crate::OutputCommand, 1);
+        let (ahrs_state_sender, ahrs_state_receiver) =
+            rtic_sync::make_channel!(dcmimu::EulerAngles, 1);
 
-        imu_handler::spawn(imu_data_receiver).ok();
+        imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
         crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
-        pwm_output_task::spawn(rc_state_receiver).ok();
+        control_task::spawn(ahrs_state_receiver, rc_state_receiver, pwm_output_sender).ok();
+        pwm_output_task::spawn(pwm_output_receiver).ok();
 
         defmt::info!("Clock setup");
         let rcc = cx.device.RCC.constrain();
@@ -302,6 +315,7 @@ mod app {
     async fn imu_handler(
         _cx: imu_handler::Context,
         mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
+        mut ahrs_state_sender: rtic_sync::channel::Sender<'static, dcmimu::EulerAngles, 1>,
     ) {
         defmt::info!("imu handler spawned");
         let mut ahrs = dcmimu::DCMIMU::new();
@@ -335,6 +349,9 @@ mod app {
             let (dcm, _gyro_bias) =
                 ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.01);
 
+            if let Err(_) = ahrs_state_sender.try_send(dcm) {
+                // defmt::error!("error publishing ahrs state");
+            }
             if i % 1000 == 0 {
                 // defmt::info!("gyro x: {}\ty: {}\tz: {}", gyro_x, gyro_y, gyro_z);
                 // defmt::info!("accel x: {}\ty: {}\tz: {}", acc_x, acc_y, acc_z);
@@ -382,6 +399,7 @@ mod app {
             let throttle = crate::crsf::ticks_to_us(channels.channel_03());
             let yaw = crate::crsf::ticks_to_us(channels.channel_04());
             let armed_channel = crate::crsf::ticks_to_us(channels.channel_05());
+            let mode = crate::crsf::ticks_to_us(channels.channel_06());
 
             if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
                 armed = true;
@@ -397,6 +415,7 @@ mod app {
                 pitch,
                 throttle,
                 yaw,
+                mode,
             };
             if let Err(_) = tx.try_send(rc_in) {
                 defmt::error!("error publishing rc state");
@@ -404,14 +423,92 @@ mod app {
         }
     }
 
+    #[task(priority = 2)]
+    async fn control_task(
+        _cx: control_task::Context,
+        mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, dcmimu::EulerAngles, 1>,
+        mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
+        mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
+    ) {
+        use futures::{select_biased, FutureExt};
+        defmt::info!("control task started");
+        let mut saved_rc_state = RcState {
+            armed: false,
+            roll: 1500,
+            pitch: 1500,
+            throttle: 900,
+            yaw: 1500,
+            mode: 1000,
+        };
+
+        loop {
+            enum ControlTaskEvent {
+                RcState(RcState),
+                AhrsState(dcmimu::EulerAngles),
+            }
+
+            let event = select_biased! {
+                v = rc_state_receiver.recv().fuse() => {
+                    let rc_state = v.unwrap();
+                    ControlTaskEvent::RcState(rc_state)
+                }
+                v = ahrs_state_receiver.recv().fuse() => {
+                    let ahrs_state = v.unwrap();
+                    ControlTaskEvent::AhrsState(ahrs_state)
+                }
+            };
+
+            let output_command = match event {
+                ControlTaskEvent::RcState(rc_state) => {
+                    saved_rc_state = rc_state;
+                    if rc_state.mode < 1450 {
+                        // save the command and use it in stabilized mode
+                        None
+                    } else {
+                        // manual mode
+                        let output_command = crate::OutputCommand {
+                            armed: rc_state.armed,
+                            roll: rc_state.roll,
+                            pitch: rc_state.pitch,
+                            throttle: rc_state.throttle,
+                            yaw: rc_state.yaw,
+                        };
+                        Some(output_command)
+                    }
+                }
+                ControlTaskEvent::AhrsState(ahrs_state) => {
+                    if saved_rc_state.mode >= 1450 {
+                        // we don't do anything with the ahrs data in manual mode
+                        None
+                    } else {
+                        let pitch_commad = (saved_rc_state.pitch as i16
+                            + (ahrs_state.pitch * 180.0 / PI * 20.0) as i16)
+                            as u16;
+                        let output_command = crate::OutputCommand {
+                            armed: saved_rc_state.armed,
+                            roll: saved_rc_state.roll,
+                            pitch: pitch_commad,
+                            throttle: saved_rc_state.throttle,
+                            yaw: saved_rc_state.yaw,
+                        };
+                        Some(output_command)
+                    }
+                }
+            };
+            if let Some(v) = output_command {
+                pwm_output_sender.try_send(v).ok();
+            }
+        }
+    }
+
     #[task(priority = 10, local = [s1, s5, s6])]
     async fn pwm_output_task(
         cx: pwm_output_task::Context,
-        mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
+        mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, crate::OutputCommand, 1>,
     ) {
         defmt::info!("pwm output task started");
         loop {
-            match Mono::timeout_after(100.millis(), rc_state_receiver.recv()).await {
+            match Mono::timeout_after(100.millis(), pwm_output_receiver.recv()).await {
                 Ok(v) => {
                     let rc_state = v.unwrap();
                     // defmt::info!(
@@ -423,16 +520,16 @@ mod app {
                     //     rc_state.yaw,
                     // );
                     if rc_state.armed {
-                        cx.local.s1.set_duty(rc_state.throttle);
-                        // cx.local.s1.enable();
+                        let throttle = rc_state.throttle.min(2000).max(1000);
+                        cx.local.s1.set_duty(throttle);
                     } else {
                         cx.local.s1.set_duty(900);
-                        // cx.local.s1.disable();
-                    }
-                    cx.local
-                        .s5
-                        .set_duty(((rc_state.pitch as i16 - 1500) * -1 + 1500) as u16);
-                    cx.local.s6.set_duty(rc_state.pitch);
+                    };
+                    let s5_duty = ((rc_state.pitch as i16 - 1500) * -1 + 1500) as u16;
+                    let s6_duty = rc_state.pitch;
+
+                    cx.local.s5.set_duty(s5_duty.min(2000).max(1000));
+                    cx.local.s6.set_duty(s6_duty.min(2000).max(1000));
                 }
                 Err(_) => {
                     defmt::error!("pwm output timeout");

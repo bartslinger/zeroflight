@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 use modular_bitfield::prelude::*;
 
+#[derive(Clone, Copy)]
 pub(crate) struct RcState {
     pub(crate) armed: bool,
     pub(crate) roll: u16,
     pub(crate) pitch: u16,
     pub(crate) throttle: u16,
     pub(crate) yaw: u16,
+    pub(crate) mode: u16,
 }
 
 #[bitfield]

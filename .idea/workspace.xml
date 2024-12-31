@@ -7,8 +7,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="parse crsf rx channels and set throttle and elevator servos">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="high prio pwm output task with timeout">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/crsf.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/crsf.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
@@ -130,7 +132,7 @@
       <workItem from="1735568049837" duration="1168000" />
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
-      <workItem from="1735607582125" duration="1558000" />
+      <workItem from="1735607582125" duration="5716000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -308,7 +310,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735568200313</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="high prio pwm output task with timeout">
+      <option name="closed" value="true" />
+      <created>1735609957395</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1735609957395</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -335,6 +345,7 @@
     <MESSAGE value="use a crate for attitude estimation (gyro sign still wrong?)" />
     <MESSAGE value="pwm on servo outputs s3..=s6" />
     <MESSAGE value="parse crsf rx channels and set throttle and elevator servos" />
-    <option name="LAST_COMMIT_MESSAGE" value="parse crsf rx channels and set throttle and elevator servos" />
+    <MESSAGE value="high prio pwm output task with timeout" />
+    <option name="LAST_COMMIT_MESSAGE" value="high prio pwm output task with timeout" />
   </component>
 </project>
