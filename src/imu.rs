@@ -59,7 +59,7 @@ pub(crate) fn imu_rx_handler(cx: crate::app::imu_rx_handler::Context<'_>) {
     *cx.local.prev_fifo_count = fifo_count;
     if let Some(imu_data) = imu_data.take() {
         if let Err(_e) = cx.local.imu_data_sender.try_send(imu_data) {
-            defmt::info!("IMU data sender failed");
+            // defmt::info!("IMU data sender failed");
         };
     }
 }

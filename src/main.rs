@@ -5,6 +5,7 @@
 //#![deny(missing_docs)]
 
 mod blink;
+mod controller;
 mod crsf;
 mod icm42688p;
 mod imu;
@@ -24,6 +25,7 @@ struct OutputCommand {
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::blink::blink;
+    use crate::controller::ControllerOutput;
     use crate::crsf::RcState;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
@@ -50,6 +52,8 @@ mod app {
         crsf_serial: stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>,
         crsf_data_sender: rtic_sync::channel::Sender<'static, u8, 64>,
         s1: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM4, 1>,
+        s3: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM3, 2>,
+        s4: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM3, 3>,
         s5: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 2>,
         s6: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 3>,
     }
@@ -281,6 +285,8 @@ mod app {
                 crsf_serial,
                 crsf_data_sender,
                 s1,
+                s3,
+                s4,
                 s5,
                 s6,
             },
@@ -418,7 +424,7 @@ mod app {
                 mode,
             };
             if let Err(_) = tx.try_send(rc_in) {
-                defmt::error!("error publishing rc state");
+                // defmt::error!("error publishing rc state");
             }
         }
     }
@@ -439,8 +445,8 @@ mod app {
         }
         let mut flight_mode = FlightMode::Stabilized;
 
-        let mut saved_rc_timestamp = Mono::now();
-        let mut saved_rc_state = RcState {
+        let mut rc_timestamp = Mono::now();
+        let mut rc_state = RcState {
             armed: false,
             roll: 1500,
             pitch: 1500,
@@ -448,6 +454,14 @@ mod app {
             yaw: 1500,
             mode: 1000,
         };
+
+        let mut ahrs_state = dcmimu::EulerAngles {
+            roll: 0.0,
+            pitch: 0.0,
+            yaw: 0.0,
+        };
+
+        let mut controller = crate::controller::Controller::new();
 
         defmt::info!("control task started");
         loop {
@@ -468,64 +482,70 @@ mod app {
             };
 
             match event {
-                ControlTaskEvent::RcState(rc_state) => {
-                    saved_rc_state = rc_state;
-                    saved_rc_timestamp = Mono::now();
-                    if rc_state.mode < 1450 {
+                ControlTaskEvent::RcState(new_rc_state) => {
+                    rc_state = new_rc_state;
+                    rc_timestamp = Mono::now();
+                    if new_rc_state.mode < 1450 {
                         flight_mode = FlightMode::Stabilized;
                         // stabilized mode will be active on next ahrs sample
                     } else {
                         // manual mode
                         flight_mode = FlightMode::Manual;
-                        let output_command = crate::OutputCommand {
-                            armed: rc_state.armed,
-                            roll: rc_state.roll,
-                            pitch: rc_state.pitch,
-                            throttle: rc_state.throttle,
-                            yaw: rc_state.yaw,
-                        };
-                        pwm_output_sender.try_send(output_command).ok();
                     }
                 }
-                ControlTaskEvent::AhrsState(ahrs_state) => {
-                    if let Some(dt) = Mono::now().checked_duration_since(saved_rc_timestamp) {
-                        if saved_rc_state.armed && dt.to_millis() > 500 {
+                ControlTaskEvent::AhrsState(new_ahrs_state) => {
+                    ahrs_state = new_ahrs_state;
+                    if let Some(dt) = Mono::now().checked_duration_since(rc_timestamp) {
+                        if rc_state.armed && dt.to_millis() > 500 {
                             flight_mode = FlightMode::Failsafe;
                         }
                     }
+                }
+            }
 
-                    match flight_mode {
-                        FlightMode::Manual => {}
-                        FlightMode::Stabilized => {
-                            let pitch_commad = (saved_rc_state.pitch as i16
-                                + (ahrs_state.pitch * 180.0 / PI * 20.0) as i16)
-                                as u16;
-                            let output_command = crate::OutputCommand {
-                                armed: saved_rc_state.armed,
-                                roll: saved_rc_state.roll,
-                                pitch: pitch_commad,
-                                throttle: saved_rc_state.throttle,
-                                yaw: saved_rc_state.yaw,
-                            };
-                            pwm_output_sender.try_send(output_command).ok();
-                        }
-                        FlightMode::Failsafe => {
-                            let output_command = crate::OutputCommand {
-                                armed: false,
-                                roll: 1500,
-                                pitch: 1200,
-                                throttle: 900,
-                                yaw: 1500,
-                            };
-                            pwm_output_sender.try_send(output_command).ok();
-                        }
-                    }
+            match flight_mode {
+                FlightMode::Manual => {
+                    let output_command = crate::OutputCommand {
+                        armed: rc_state.armed,
+                        roll: rc_state.roll,
+                        pitch: rc_state.pitch,
+                        throttle: rc_state.throttle,
+                        yaw: rc_state.yaw,
+                    };
+                    pwm_output_sender.try_send(output_command).ok();
+                }
+                FlightMode::Stabilized => {
+                    let roll_setpoint =
+                        ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 45.0 * PI / 180.0;
+                    let pitch_setpoint =
+                        ((rc_state.pitch as i16 - 1500) as f32 / 500.0) * -30.0 * PI / 180.0;
+                    let ControllerOutput { roll, pitch } =
+                        controller.update(ahrs_state, roll_setpoint, pitch_setpoint);
+                    let output_command = crate::OutputCommand {
+                        armed: rc_state.armed,
+                        roll: ((roll * 500.0) as i16 + 1500) as u16,
+                        pitch: ((pitch * 500.0) as i16 + 1500) as u16,
+                        throttle: rc_state.throttle,
+                        yaw: rc_state.yaw,
+                    };
+                    pwm_output_sender.try_send(output_command).ok();
+                }
+                FlightMode::Failsafe => {
+                    let ControllerOutput { roll, pitch } = controller.update(ahrs_state, 0.0, 0.0);
+                    let output_command = crate::OutputCommand {
+                        armed: false,
+                        roll: ((roll * 500.0) as i16 + 1500) as u16,
+                        pitch: ((pitch * 500.0) as i16 + 1500) as u16,
+                        throttle: 900,
+                        yaw: 1500,
+                    };
+                    pwm_output_sender.try_send(output_command).ok();
                 }
             }
         }
     }
 
-    #[task(priority = 10, local = [s1, s5, s6])]
+    #[task(priority = 10, local = [s1, s3, s4, s5, s6])]
     async fn pwm_output_task(
         cx: pwm_output_task::Context,
         mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, crate::OutputCommand, 1>,
@@ -549,9 +569,16 @@ mod app {
                     } else {
                         cx.local.s1.set_duty(900);
                     };
+
+                    // scale roll 60%
+                    let s3_duty = ((rc_state.roll as i16 - 1500) * 6 / 10 * -1 + 1500) as u16;
+                    let s4_duty = ((rc_state.roll as i16 - 1500) * 6 / 10 * -1 + 1500) as u16;
+
                     let s5_duty = ((rc_state.pitch as i16 - 1500) * -1 + 1500) as u16;
                     let s6_duty = rc_state.pitch;
 
+                    cx.local.s3.set_duty(s3_duty.min(1750).max(1250));
+                    cx.local.s4.set_duty(s4_duty.min(1750).max(1250));
                     cx.local.s5.set_duty(s5_duty.min(2000).max(1000));
                     cx.local.s6.set_duty(s6_duty.min(2000).max(1000));
                 }
