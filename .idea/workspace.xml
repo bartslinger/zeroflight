@@ -7,8 +7,7 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="basic failsafe mode">
-      <change afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="basic stabilization only feedforward">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
@@ -130,7 +129,7 @@
       <workItem from="1735568049837" duration="1168000" />
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
-      <workItem from="1735607582125" duration="11067000" />
+      <workItem from="1735607582125" duration="13646000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -332,7 +331,15 @@
       <option name="project" value="LOCAL" />
       <updated>1735623635545</updated>
     </task>
-    <option name="localTasksCounter" value="26" />
+    <task id="LOCAL-00026" summary="basic stabilization only feedforward">
+      <option name="closed" value="true" />
+      <created>1735626840670</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1735626840670</updated>
+    </task>
+    <option name="localTasksCounter" value="27" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -362,6 +369,7 @@
     <MESSAGE value="high prio pwm output task with timeout" />
     <MESSAGE value="basic modes manual and stabilized" />
     <MESSAGE value="basic failsafe mode" />
-    <option name="LAST_COMMIT_MESSAGE" value="basic failsafe mode" />
+    <MESSAGE value="basic stabilization only feedforward" />
+    <option name="LAST_COMMIT_MESSAGE" value="basic stabilization only feedforward" />
   </component>
 </project>

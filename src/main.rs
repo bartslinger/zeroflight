@@ -19,6 +19,7 @@ struct OutputCommand {
     roll: u16,
     pitch: u16,
     throttle: u16,
+    #[allow(unused)]
     yaw: u16,
 }
 
@@ -301,9 +302,13 @@ mod app {
         let mut prev_cyc_cnt = dwt.cyccnt.read();
         let mut counter = 0;
         loop {
-            // defmt::info!("loop");
             cortex_m::asm::nop();
             counter += 1;
+            if counter % 100_000 == 0 {
+                defmt::info!("write tons of data in idle loop to check if this locks the FC");
+                // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
+                // it's fine when the chip is started without debugger
+            }
             if counter >= 16_800_000 {
                 let cyc_cnt = dwt.cyccnt.read();
                 let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
@@ -461,7 +466,7 @@ mod app {
             yaw: 0.0,
         };
 
-        let mut controller = crate::controller::Controller::new();
+        let controller = crate::controller::Controller::new();
 
         defmt::info!("control task started");
         loop {
@@ -577,14 +582,16 @@ mod app {
                     let s5_duty = ((rc_state.pitch as i16 - 1500) * -1 + 1500) as u16;
                     let s6_duty = rc_state.pitch;
 
-                    cx.local.s3.set_duty(s3_duty.min(1750).max(1250));
-                    cx.local.s4.set_duty(s4_duty.min(1750).max(1250));
+                    cx.local.s3.set_duty(s3_duty.min(1800).max(1200));
+                    cx.local.s4.set_duty(s4_duty.min(1800).max(1200));
                     cx.local.s5.set_duty(s5_duty.min(2000).max(1000));
                     cx.local.s6.set_duty(s6_duty.min(2000).max(1000));
                 }
                 Err(_) => {
                     defmt::error!("pwm output timeout");
                     cx.local.s1.set_duty(900);
+                    cx.local.s3.set_duty(1500);
+                    cx.local.s4.set_duty(1500);
                     cx.local.s5.set_duty(1500);
                     cx.local.s6.set_duty(1500);
                 }
