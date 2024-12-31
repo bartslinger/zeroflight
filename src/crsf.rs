@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use modular_bitfield::prelude::*;
 
-pub(crate) struct RcPwmPositions {
+pub(crate) struct RcState {
     pub(crate) armed: bool,
     pub(crate) roll: u16,
     pub(crate) pitch: u16,

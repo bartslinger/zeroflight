@@ -13,10 +13,10 @@ mod usb;
 use defmt_rtt as _;
 use panic_halt as _;
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP])]
+#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::blink::blink;
-    use crate::crsf::RcPwmPositions;
+    use crate::crsf::RcState;
     use crate::imu::imu_rx_handler;
     use crate::usb::usb_tx;
     use rtic_monotonics::systick::prelude::*;
@@ -38,7 +38,7 @@ mod app {
         icm42688p_dma_context:
             crate::icm42688p::Icm42688pDmaContext<gpio::PA4<gpio::Output<gpio::PushPull>>>,
         prev_fifo_count: u16,
-        imu_data_sender: rtic_sync::channel::Sender<'static, [u8; 16], 5>,
+        imu_data_sender: rtic_sync::channel::Sender<'static, [u8; 16], 1>,
         crsf_serial: stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>,
         crsf_data_sender: rtic_sync::channel::Sender<'static, u8, 64>,
         s1: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM4, 1>,
@@ -59,11 +59,13 @@ mod app {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
         defmt::info!("init");
 
-        let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 5);
-        imu_handler::spawn(imu_data_receiver).ok();
-
+        let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
-        crsf_parser::spawn(crsf_data_receiver).ok();
+        let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
+
+        imu_handler::spawn(imu_data_receiver).ok();
+        crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
+        pwm_output_task::spawn(rc_state_receiver).ok();
 
         defmt::info!("Clock setup");
         let rcc = cx.device.RCC.constrain();
@@ -299,7 +301,7 @@ mod app {
     #[task(priority = 2)]
     async fn imu_handler(
         _cx: imu_handler::Context,
-        mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 5>,
+        mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
     ) {
         defmt::info!("imu handler spawned");
         let mut ahrs = dcmimu::DCMIMU::new();
@@ -348,10 +350,11 @@ mod app {
         }
     }
 
-    #[task(priority = 3, local = [s1, s5, s6])]
+    #[task(priority = 3)]
     async fn crsf_parser(
-        cx: crsf_parser::Context,
+        _cx: crsf_parser::Context,
         mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
+        mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
     ) {
         defmt::info!("starting crsf parser");
         let mut armed = false;
@@ -388,26 +391,56 @@ mod app {
             }
             previous_armed_channel_state = armed_channel;
 
-            let rc_in = RcPwmPositions {
+            let rc_in = RcState {
                 armed,
                 roll,
                 pitch,
                 throttle,
                 yaw,
             };
-            defmt::info!(
-                "channel info package ready {} {} {} {} {}",
-                rc_in.armed,
-                rc_in.roll,
-                rc_in.pitch,
-                rc_in.throttle,
-                rc_in.yaw,
-            );
-            cx.local.s1.set_duty(rc_in.throttle);
-            cx.local
-                .s5
-                .set_duty(((rc_in.pitch as i16 - 1500) * -1 + 1500) as u16);
-            cx.local.s6.set_duty(rc_in.pitch);
+            if let Err(_) = tx.try_send(rc_in) {
+                defmt::error!("error publishing rc state");
+            }
+        }
+    }
+
+    #[task(priority = 10, local = [s1, s5, s6])]
+    async fn pwm_output_task(
+        cx: pwm_output_task::Context,
+        mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
+    ) {
+        defmt::info!("pwm output task started");
+        loop {
+            match Mono::timeout_after(100.millis(), rc_state_receiver.recv()).await {
+                Ok(v) => {
+                    let rc_state = v.unwrap();
+                    // defmt::info!(
+                    //     "channel info package ready {} {} {} {} {}",
+                    //     rc_state.armed,
+                    //     rc_state.roll,
+                    //     rc_state.pitch,
+                    //     rc_state.throttle,
+                    //     rc_state.yaw,
+                    // );
+                    if rc_state.armed {
+                        cx.local.s1.set_duty(rc_state.throttle);
+                        // cx.local.s1.enable();
+                    } else {
+                        cx.local.s1.set_duty(900);
+                        // cx.local.s1.disable();
+                    }
+                    cx.local
+                        .s5
+                        .set_duty(((rc_state.pitch as i16 - 1500) * -1 + 1500) as u16);
+                    cx.local.s6.set_duty(rc_state.pitch);
+                }
+                Err(_) => {
+                    defmt::error!("pwm output timeout");
+                    cx.local.s1.set_duty(900);
+                    cx.local.s5.set_duty(1500);
+                    cx.local.s6.set_duty(1500);
+                }
+            }
         }
     }
 
