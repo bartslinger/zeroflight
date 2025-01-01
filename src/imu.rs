@@ -1,9 +1,15 @@
 const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
+#[derive(Copy, Clone)]
+pub(crate) struct AhrsState {
+    pub(crate) angles: dcmimu::EulerAngles,
+    pub(crate) rates: (f32, f32, f32),
+}
+
 pub(crate) async fn imu_handler(
     _cx: crate::app::imu_handler::Context<'_>,
     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
-    mut ahrs_state_sender: rtic_sync::channel::Sender<'static, dcmimu::EulerAngles, 1>,
+    mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
 ) {
     defmt::info!("imu handler spawned");
     let mut ahrs = dcmimu::DCMIMU::new();
@@ -36,7 +42,10 @@ pub(crate) async fn imu_handler(
 
         let (dcm, _gyro_bias) = ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.01);
 
-        if let Err(_) = ahrs_state_sender.try_send(dcm) {
+        if let Err(_) = ahrs_state_sender.try_send(AhrsState {
+            angles: dcm,
+            rates: (gyro_x, gyro_y, gyro_z),
+        }) {
             // defmt::error!("error publishing ahrs state");
         }
         if i % 1000 == 0 {

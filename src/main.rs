@@ -32,8 +32,8 @@ mod app {
     use crate::crsf::crsf_parser;
     use crate::crsf::usart1_irq;
     use crate::crsf::RcState;
-    use crate::imu::imu_handler;
     use crate::imu::imu_rx_irq;
+    use crate::imu::{imu_handler, AhrsState};
     use crate::pwm_output::pwm_output_task;
     use crate::usb::usb_tx;
     use rtic_monotonics::systick::prelude::*;
@@ -81,8 +81,7 @@ mod app {
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
         let (pwm_output_sender, pwm_output_receiver) =
             rtic_sync::make_channel!(crate::OutputCommand, 1);
-        let (ahrs_state_sender, ahrs_state_receiver) =
-            rtic_sync::make_channel!(dcmimu::EulerAngles, 1);
+        let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
 
         imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
         crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
@@ -359,7 +358,7 @@ mod app {
         #[task(priority = 2)]
         async fn control_task(
             _cx: control_task::Context,
-            mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, dcmimu::EulerAngles, 1>,
+            mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
             mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
             mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
         );
@@ -368,7 +367,7 @@ mod app {
         async fn imu_handler(
             _cx: imu_handler::Context,
             mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
-            mut ahrs_state_sender: rtic_sync::channel::Sender<'static, dcmimu::EulerAngles, 1>,
+            mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
         );
 
         #[task(binds = OTG_FS, shared = [usb_dev, serial], priority = 1)]

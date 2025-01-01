@@ -7,12 +7,12 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="configure imu filters for 1kHz sampling">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="remove some unwraps from reading channels">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/control.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/control.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/imu.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pwm_output.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pwm_output.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -133,7 +133,7 @@
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
       <workItem from="1735607582125" duration="14818000" />
-      <workItem from="1735711200344" duration="5259000" />
+      <workItem from="1735711200344" duration="7971000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -383,14 +383,21 @@
       <option name="project" value="LOCAL" />
       <updated>1735716908191</updated>
     </task>
-    <option name="localTasksCounter" value="32" />
+    <task id="LOCAL-00032" summary="remove some unwraps from reading channels">
+      <option name="closed" value="true" />
+      <created>1735717409502</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1735717409502</updated>
+    </task>
+    <option name="localTasksCounter" value="33" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="run periodic loop on speedybee" />
     <MESSAGE value="configure usb cdc-acm device on speedybee" />
     <MESSAGE value="usb-otg, baro who-am-i, imu who-am-i" />
     <MESSAGE value="getting some imu measurements" />
@@ -415,6 +422,7 @@
     <MESSAGE value="all tasks in other files except init/idle" />
     <MESSAGE value="crsf crc check" />
     <MESSAGE value="configure imu filters for 1kHz sampling" />
-    <option name="LAST_COMMIT_MESSAGE" value="configure imu filters for 1kHz sampling" />
+    <MESSAGE value="remove some unwraps from reading channels" />
+    <option name="LAST_COMMIT_MESSAGE" value="remove some unwraps from reading channels" />
   </component>
 </project>

@@ -1,11 +1,12 @@
 use crate::controller::ControllerOutput;
 use crate::crsf::RcState;
+use crate::imu::AhrsState;
 
 const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 pub(crate) async fn control_task(
     _cx: crate::app::control_task::Context<'_>,
-    mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, dcmimu::EulerAngles, 1>,
+    mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
     mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
 ) {
@@ -30,19 +31,22 @@ pub(crate) async fn control_task(
         mode: 1000,
     };
 
-    let mut ahrs_state = dcmimu::EulerAngles {
-        roll: 0.0,
-        pitch: 0.0,
-        yaw: 0.0,
+    let mut ahrs_state = AhrsState {
+        angles: dcmimu::EulerAngles {
+            roll: 0.0,
+            pitch: 0.0,
+            yaw: 0.0,
+        },
+        rates: (0.0, 0.0, 0.0),
     };
 
-    let controller = crate::controller::Controller::new();
+    let mut controller = crate::controller::Controller::new();
 
     defmt::info!("control task started");
     loop {
         enum ControlTaskEvent {
             RcState(RcState),
-            AhrsState(dcmimu::EulerAngles),
+            AhrsState(AhrsState),
         }
 
         let event = select_biased! {
