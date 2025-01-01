@@ -8,8 +8,7 @@ pub(crate) async fn pwm_output_task(
     defmt::info!("pwm output task started");
     loop {
         match Mono::timeout_after(100.millis(), pwm_output_receiver.recv()).await {
-            Ok(v) => {
-                let rc_state = v.unwrap();
+            Ok(Ok(rc_state)) => {
                 // defmt::info!(
                 //     "channel info package ready {} {} {} {} {}",
                 //     rc_state.armed,
@@ -37,7 +36,7 @@ pub(crate) async fn pwm_output_task(
                 cx.local.s5.set_duty(s5_duty.min(2000).max(1000));
                 cx.local.s6.set_duty(s6_duty.min(2000).max(1000));
             }
-            Err(_) => {
+            Ok(Err(_)) | Err(_) => {
                 defmt::error!("pwm output timeout");
                 cx.local.s1.set_duty(900);
                 cx.local.s3.set_duty(1500);

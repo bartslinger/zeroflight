@@ -309,7 +309,7 @@ mod app {
             cortex_m::asm::nop();
             counter += 1;
             if counter % 100_000 == 0 {
-                defmt::info!("write tons of data in idle loop to check if this locks the FC");
+                // defmt::info!("write tons of data in idle loop to check if this locks the FC");
                 // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
                 // it's fine when the chip is started without debugger
             }

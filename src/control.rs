@@ -47,12 +47,16 @@ pub(crate) async fn control_task(
 
         let event = select_biased! {
             v = rc_state_receiver.recv().fuse() => {
-                let rc_state = v.unwrap();
-                ControlTaskEvent::RcState(rc_state)
+                match v {
+                    Ok(v) => ControlTaskEvent::RcState(v),
+                    Err(_) => continue,
+                }
             }
             v = ahrs_state_receiver.recv().fuse() => {
-                let ahrs_state = v.unwrap();
-                ControlTaskEvent::AhrsState(ahrs_state)
+                match v {
+                    Ok(v) => ControlTaskEvent::AhrsState(v),
+                    Err(_) => continue,
+                }
             }
         };
 

@@ -64,9 +64,9 @@ pub(crate) fn imu_rx_irq(cx: crate::app::imu_rx_irq::Context<'_>) {
     cs.set_high(); // stop the transaction
 
     rx_transfer.clear_transfer_complete();
-    let ready_rx_buffer = rx_buffer.take().unwrap();
-    let ready_tx_buffer = tx_buffer.take().unwrap();
-    // cortex_m::asm::delay(10_000);
+    let ready_rx_buffer = rx_buffer.take().unwrap(); // we put it back later
+    let ready_tx_buffer = tx_buffer.take().unwrap(); // we put it back later
+
     cs.set_low();
 
     rx_transfer.pause(|_| {});
