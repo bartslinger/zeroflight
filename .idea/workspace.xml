@@ -7,11 +7,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="all tasks in other files except init/idle">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="crsf crc check">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/crsf.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/crsf.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/icm42688p.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/icm42688p.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -132,7 +130,7 @@
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
       <workItem from="1735607582125" duration="14818000" />
-      <workItem from="1735711200344" duration="1483000" />
+      <workItem from="1735711200344" duration="4704000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -358,14 +356,21 @@
       <option name="project" value="LOCAL" />
       <updated>1735712172050</updated>
     </task>
-    <option name="localTasksCounter" value="29" />
+    <task id="LOCAL-00029" summary="crsf crc check">
+      <option name="closed" value="true" />
+      <created>1735713426772</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1735713426772</updated>
+    </task>
+    <option name="localTasksCounter" value="30" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="usb cdc-acm device with led blinking at higher priority" />
     <MESSAGE value="nicer log output without line numbers" />
     <MESSAGE value="run periodic loop on speedybee" />
     <MESSAGE value="configure usb cdc-acm device on speedybee" />
@@ -390,6 +395,7 @@
     <MESSAGE value="basic stabilization only feedforward" />
     <MESSAGE value="check defmt causing hang after unplugging debugger" />
     <MESSAGE value="all tasks in other files except init/idle" />
-    <option name="LAST_COMMIT_MESSAGE" value="all tasks in other files except init/idle" />
+    <MESSAGE value="crsf crc check" />
+    <option name="LAST_COMMIT_MESSAGE" value="crsf crc check" />
   </component>
 </project>
