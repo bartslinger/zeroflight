@@ -4,6 +4,7 @@ const PI: f32 = 3.14159265358979323846264338327950288_f32;
 pub(crate) struct AhrsState {
     pub(crate) angles: dcmimu::EulerAngles,
     pub(crate) rates: (f32, f32, f32),
+    pub(crate) _acceleration: (f32, f32, f32),
 }
 
 pub(crate) async fn imu_handler(
@@ -37,7 +38,7 @@ pub(crate) async fn imu_handler(
         let gyro_z = -raw_gyro_z as f32 * PI / 180.0 / 16.4;
         let _temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
         let timestamp: u16 = (raw_timestamp as u32 * 32 / 30) as u16;
-        let diff = timestamp.wrapping_sub(prev_timestamp);
+        let _diff = timestamp.wrapping_sub(prev_timestamp);
         prev_timestamp = timestamp;
 
         let reset_ahrs = &cx.shared.flags.reset_ahrs;
@@ -50,6 +51,7 @@ pub(crate) async fn imu_handler(
         if let Err(_) = ahrs_state_sender.try_send(AhrsState {
             angles: dcm,
             rates: (gyro_x, gyro_y, gyro_z),
+            _acceleration: (acc_x, acc_y, acc_z),
         }) {
             // defmt::error!("error publishing ahrs state");
         }

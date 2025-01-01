@@ -10,6 +10,7 @@ pub(crate) struct RcState {
     pub(crate) throttle: u16,
     pub(crate) yaw: u16,
     pub(crate) mode: u16,
+    pub(crate) pitch_offset: u16,
 }
 
 #[bitfield]
@@ -95,6 +96,7 @@ pub(crate) async fn crsf_parser(
         let mode = crate::crsf::ticks_to_us(channels.channel_06());
         // ...
         let reset_channel = crate::crsf::ticks_to_us(channels.channel_09());
+        let pitch_offset = crate::crsf::ticks_to_us(channels.channel_10());
 
         if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
             armed = true;
@@ -116,6 +118,7 @@ pub(crate) async fn crsf_parser(
             throttle,
             yaw,
             mode,
+            pitch_offset,
         };
         if let Err(_) = tx.try_send(rc_in) {
             // defmt::error!("error publishing rc state");

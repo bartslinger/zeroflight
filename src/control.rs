@@ -30,16 +30,10 @@ pub(crate) async fn control_task(
         throttle: 900,
         yaw: 1500,
         mode: 1000,
+        pitch_offset: 1000,
     };
 
-    let mut ahrs_state = AhrsState {
-        angles: dcmimu::EulerAngles {
-            roll: 0.0,
-            pitch: 0.0,
-            yaw: 0.0,
-        },
-        rates: (0.0, 0.0, 0.0),
-    };
+    let mut ahrs_state;
 
     let mut controller = crate::controller::Controller::new();
 
@@ -105,10 +99,16 @@ pub(crate) async fn control_task(
         match flight_mode {
             FlightMode::Manual => {}
             FlightMode::Stabilized => {
+                let pitch_offset = if rc_state.pitch_offset > 1500 {
+                    -(rc_state.pitch_offset as i16 - 1500)
+                } else {
+                    0
+                };
                 let roll_setpoint =
                     ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 45.0 * PI / 180.0;
                 let pitch_setpoint =
-                    ((rc_state.pitch as i16 - 1500) as f32 / 500.0) * -30.0 * PI / 180.0;
+                    ((rc_state.pitch as i16 + pitch_offset - 1500) as f32 / 500.0) * -30.0 * PI
+                        / 180.0;
                 let pitch_offset = 2.0 * PI / 180.0; // 2 degrees pitch up by default
                 let ControllerOutput { roll, pitch } = controller.update(
                     ahrs_state,
