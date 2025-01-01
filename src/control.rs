@@ -103,8 +103,12 @@ pub(crate) async fn control_task(
                 let pitch_setpoint =
                     ((rc_state.pitch as i16 - 1500) as f32 / 500.0) * -30.0 * PI / 180.0;
                 let pitch_offset = 2.0 * PI / 180.0; // 2 degrees pitch up by default
-                let ControllerOutput { roll, pitch } =
-                    controller.update(ahrs_state, roll_setpoint, pitch_offset + pitch_setpoint);
+                let ControllerOutput { roll, pitch } = controller.update(
+                    ahrs_state,
+                    roll_setpoint,
+                    pitch_offset + pitch_setpoint,
+                    rc_state.armed,
+                );
                 let output_command = crate::OutputCommand {
                     armed: rc_state.armed,
                     roll: ((roll * 500.0) as i16 + 1500) as u16,
@@ -115,7 +119,8 @@ pub(crate) async fn control_task(
                 pwm_output_sender.try_send(output_command).ok();
             }
             FlightMode::Failsafe => {
-                let ControllerOutput { roll, pitch } = controller.update(ahrs_state, 0.0, 0.0);
+                let ControllerOutput { roll, pitch } =
+                    controller.update(ahrs_state, 0.0, 0.0, true);
                 let output_command = crate::OutputCommand {
                     armed: false,
                     roll: ((roll * 500.0) as i16 + 1500) as u16,

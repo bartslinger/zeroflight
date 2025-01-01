@@ -29,6 +29,7 @@ impl Controller {
         measurement: AhrsState,
         roll_setpoint_rad: f32,
         pitch_setpoint_rad: f32,
+        integral_active: bool,
     ) -> ControllerOutput {
         let roll_error = roll_setpoint_rad - measurement.angles.roll;
         let pitch_error = pitch_setpoint_rad - measurement.angles.pitch;
@@ -71,14 +72,18 @@ impl Controller {
         // let fw_d_roll = 0.00367521367521;
         let fw_ff_roll = 1.93548387097 * 180.0 / PI;
 
-        self.roll_integral = (self.roll_integral + roll_rate_error * fw_i_roll * 0.01)
-            .min(200.0)
-            .max(-200.0);
-        self.pitch_integral = (self.pitch_integral + pitch_rate_error * fw_i_pitch * 0.01)
-            .min(200.0)
-            .max(-200.0);
+        if integral_active {
+            self.roll_integral = (self.roll_integral + roll_rate_error * fw_i_roll * 0.01)
+                .min(200.0)
+                .max(-200.0);
+            self.pitch_integral = (self.pitch_integral + pitch_rate_error * fw_i_pitch * 0.01)
+                .min(200.0)
+                .max(-200.0);
+        } else {
+            self.roll_integral = 0.0;
+            self.pitch_integral = 0.0;
+        }
 
-        // Apply only P and FF for now
         let roll_output =
             (self.roll_integral + roll_rate_error * fw_p_roll + roll_rate_setpoint * fw_ff_roll)
                 / 500.0;
