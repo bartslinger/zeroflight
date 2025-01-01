@@ -7,11 +7,13 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="integral active only when armed">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="ahrs reset on rc channel 9">
+      <change beforePath="$PROJECT_DIR$/.cargo/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/.cargo/config.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/crsf.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/crsf.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/control.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/control.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/imu.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pwm_output.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pwm_output.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -132,7 +134,7 @@
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
       <workItem from="1735607582125" duration="14818000" />
-      <workItem from="1735711200344" duration="9982000" />
+      <workItem from="1735711200344" duration="13108000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -406,14 +408,21 @@
       <option name="project" value="LOCAL" />
       <updated>1735722295679</updated>
     </task>
-    <option name="localTasksCounter" value="35" />
+    <task id="LOCAL-00035" summary="ahrs reset on rc channel 9">
+      <option name="closed" value="true" />
+      <created>1735723448418</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1735723448418</updated>
+    </task>
+    <option name="localTasksCounter" value="36" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="getting some imu measurements" />
     <MESSAGE value="fifo operations on the imu" />
     <MESSAGE value="reading up to 10 imu samples simultaneously" />
     <MESSAGE value="read who-am-i in a loop with dma" />
@@ -438,6 +447,7 @@
     <MESSAGE value="remove some unwraps from reading channels" />
     <MESSAGE value="piff control based on inav tuning" />
     <MESSAGE value="integral active only when armed" />
-    <option name="LAST_COMMIT_MESSAGE" value="integral active only when armed" />
+    <MESSAGE value="ahrs reset on rc channel 9" />
+    <option name="LAST_COMMIT_MESSAGE" value="ahrs reset on rc channel 9" />
   </component>
 </project>

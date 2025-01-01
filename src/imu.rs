@@ -56,13 +56,13 @@ pub(crate) async fn imu_handler(
         if i % 1000 == 0 {
             // defmt::info!("gyro x: {}\ty: {}\tz: {}", gyro_x, gyro_y, gyro_z);
             // defmt::info!("accel x: {}\ty: {}\tz: {}", acc_x, acc_y, acc_z);
-            defmt::info!(
-                "T: {}\troll: {}\tpitch: {}\tyaw: {}",
-                diff,
-                dcm.roll * 180.0 / PI,
-                dcm.pitch * 180.0 / PI,
-                dcm.yaw * 180.0 / PI
-            );
+            // defmt::info!(
+            //     "T: {}\troll: {}\tpitch: {}\tyaw: {}",
+            //     diff,
+            //     dcm.roll * 180.0 / PI,
+            //     dcm.pitch * 180.0 / PI,
+            //     dcm.yaw * 180.0 / PI
+            // );
             i = 0;
         }
     }

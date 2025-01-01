@@ -25,14 +25,21 @@ pub(crate) async fn pwm_output_task(
                 };
 
                 // scale roll 60%
-                let s3_duty = ((rc_state.roll as i16 - 1500) * 6 / 10 * -1 + 1500) as u16;
-                let s4_duty = ((rc_state.roll as i16 - 1500) * 6 / 10 * -1 + 1500) as u16;
+                let roll_middle = 1454;
+                let roll_min = roll_middle - 300;
+                let roll_max = roll_middle + 300;
+                let s3_duty = ((rc_state.roll as i16 - 1500) * 6 / 10 * -1 + roll_middle) as u16;
+                let s4_duty = ((rc_state.roll as i16 - 1500) * 6 / 10 * -1 + roll_middle) as u16;
 
                 let s5_duty = ((rc_state.pitch as i16 - 1500) * -1 + 1500) as u16;
                 let s6_duty = rc_state.pitch;
 
-                cx.local.s3.set_duty(s3_duty.min(1800).max(1200));
-                cx.local.s4.set_duty(s4_duty.min(1800).max(1200));
+                cx.local
+                    .s3
+                    .set_duty(s3_duty.min(roll_max as u16).max(roll_min as u16));
+                cx.local
+                    .s4
+                    .set_duty(s4_duty.min(roll_max as u16).max(roll_min as u16));
                 cx.local.s5.set_duty(s5_duty.min(2000).max(1000));
                 cx.local.s6.set_duty(s6_duty.min(2000).max(1000));
             }

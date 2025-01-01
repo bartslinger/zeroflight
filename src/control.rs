@@ -16,6 +16,7 @@ pub(crate) async fn control_task(
 
     enum FlightMode {
         Stabilized,
+        Acro,
         Manual,
         Failsafe,
     }
@@ -68,13 +69,28 @@ pub(crate) async fn control_task(
             ControlTaskEvent::RcState(new_rc_state) => {
                 rc_state = new_rc_state;
                 rc_timestamp = Mono::now();
-                if new_rc_state.mode < 1450 {
+                if new_rc_state.mode < 1400 {
                     flight_mode = FlightMode::Stabilized;
                     // stabilized mode will be active on next ahrs sample
+                } else if new_rc_state.mode >= 1400 && new_rc_state.mode < 1600 {
+                    flight_mode = FlightMode::Acro;
                 } else {
                     // manual mode
                     flight_mode = FlightMode::Manual;
+                    let output_command = crate::OutputCommand {
+                        armed: rc_state.armed,
+                        roll: rc_state.roll,
+                        pitch: rc_state.pitch,
+                        throttle: rc_state.throttle,
+                        yaw: rc_state.yaw,
+                    };
+                    pwm_output_sender.try_send(output_command).ok();
                 }
+                // This is important, we don't process the rc commands directly in stabilized modes.
+                // IMU data is leading
+                // It's a design choice that could be set differently later,
+                // For example, the previous PID calculation could be re-calculated based on new input
+                continue;
             }
             ControlTaskEvent::AhrsState(new_ahrs_state) => {
                 ahrs_state = new_ahrs_state;
@@ -87,16 +103,7 @@ pub(crate) async fn control_task(
         }
 
         match flight_mode {
-            FlightMode::Manual => {
-                let output_command = crate::OutputCommand {
-                    armed: rc_state.armed,
-                    roll: rc_state.roll,
-                    pitch: rc_state.pitch,
-                    throttle: rc_state.throttle,
-                    yaw: rc_state.yaw,
-                };
-                pwm_output_sender.try_send(output_command).ok();
-            }
+            FlightMode::Manual => {}
             FlightMode::Stabilized => {
                 let roll_setpoint =
                     ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 45.0 * PI / 180.0;
@@ -107,6 +114,28 @@ pub(crate) async fn control_task(
                     ahrs_state,
                     roll_setpoint,
                     pitch_offset + pitch_setpoint,
+                    rc_state.armed,
+                );
+                let output_command = crate::OutputCommand {
+                    armed: rc_state.armed,
+                    roll: ((roll * 500.0) as i16 + 1500) as u16,
+                    pitch: ((pitch * 500.0) as i16 + 1500) as u16,
+                    throttle: rc_state.throttle,
+                    yaw: rc_state.yaw,
+                };
+                pwm_output_sender.try_send(output_command).ok();
+            }
+            FlightMode::Acro => {
+                // 180deg/s roll, 90 deg/s pitch
+                let roll_rate_setpoint =
+                    ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 180.0 * PI / 180.0;
+                let pitch_rate_setpoint =
+                    ((rc_state.pitch as i16 - 1500) as f32 / 500.0) * -90.0 * PI / 180.0;
+
+                let ControllerOutput { roll, pitch } = controller.stabilize_rates(
+                    ahrs_state,
+                    roll_rate_setpoint,
+                    pitch_rate_setpoint,
                     rc_state.armed,
                 );
                 let output_command = crate::OutputCommand {

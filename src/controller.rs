@@ -41,6 +41,21 @@ impl Controller {
         let roll_rate_setpoint = roll_error * 3.05;
         let pitch_rate_setpoint = pitch_error * 3.05;
 
+        self.stabilize_rates(
+            measurement,
+            roll_rate_setpoint,
+            pitch_rate_setpoint,
+            integral_active,
+        )
+    }
+
+    pub fn stabilize_rates(
+        &mut self,
+        measurement: AhrsState,
+        roll_rate_setpoint: f32,
+        pitch_rate_setpoint: f32,
+        integral_active: bool,
+    ) -> ControllerOutput {
         let roll_rate_error = roll_rate_setpoint - measurement.rates.0;
         let pitch_rate_error = pitch_rate_setpoint - measurement.rates.1;
 
