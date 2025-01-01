@@ -367,7 +367,7 @@ mod app {
             mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
         );
 
-        #[task(priority = 2)]
+        #[task(priority = 2, shared = [&flags])]
         async fn control_task(
             _cx: control_task::Context,
             mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,

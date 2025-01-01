@@ -24,6 +24,11 @@ impl Controller {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.roll_integral = 0.0;
+        self.pitch_integral = 0.0;
+    }
+
     pub fn update(
         &mut self,
         measurement: AhrsState,

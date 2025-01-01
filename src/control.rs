@@ -1,11 +1,12 @@
 use crate::controller::ControllerOutput;
 use crate::crsf::RcState;
 use crate::imu::AhrsState;
+use core::sync::atomic::Ordering::SeqCst;
 
 const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 pub(crate) async fn control_task(
-    _cx: crate::app::control_task::Context<'_>,
+    cx: crate::app::control_task::Context<'_>,
     mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
     mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
@@ -96,6 +97,9 @@ pub(crate) async fn control_task(
             }
         }
 
+        if cx.shared.flags.reset_ahrs.load(SeqCst) {
+            controller.reset();
+        }
         match flight_mode {
             FlightMode::Manual => {}
             FlightMode::Stabilized => {
