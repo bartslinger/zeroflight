@@ -56,6 +56,8 @@ pub(crate) async fn crsf_parser(
     defmt::info!("starting crsf parser");
     let mut armed = false;
     let mut previous_armed_channel_state: u16 = 1000;
+
+    let crc8_dvb_s2 = crc::Crc::<u8>::new(&crc::CRC_8_DVB_S2);
     loop {
         // Check sync byte
         if rx.recv().await.unwrap() != 0xC8 {
@@ -73,6 +75,17 @@ pub(crate) async fn crsf_parser(
         for i in 0..22 {
             channel_bytes[i] = rx.recv().await.unwrap();
         }
+        let crc_byte = rx.recv().await.unwrap();
+
+        let mut digest = crc8_dvb_s2.digest();
+        digest.update(&[0x16]);
+        digest.update(&channel_bytes);
+        let calculated_crc = digest.finalize();
+        if calculated_crc != crc_byte {
+            defmt::warn!("crc mismatch");
+            continue;
+        }
+
         let channels = crate::crsf::Channels::from_bytes(channel_bytes);
         let roll = crate::crsf::ticks_to_us(channels.channel_01());
         let pitch = crate::crsf::ticks_to_us(channels.channel_02());

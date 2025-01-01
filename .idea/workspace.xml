@@ -7,13 +7,11 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="check defmt causing hang after unplugging debugger">
-      <change afterPath="$PROJECT_DIR$/src/control.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/pwm_output.rs" afterDir="false" />
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="all tasks in other files except init/idle">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/crsf.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/crsf.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/imu.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/imu.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -134,7 +132,7 @@
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
       <workItem from="1735607582125" duration="14818000" />
-      <workItem from="1735711200344" duration="928000" />
+      <workItem from="1735711200344" duration="1483000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -352,14 +350,21 @@
       <option name="project" value="LOCAL" />
       <updated>1735629240421</updated>
     </task>
-    <option name="localTasksCounter" value="28" />
+    <task id="LOCAL-00028" summary="all tasks in other files except init/idle">
+      <option name="closed" value="true" />
+      <created>1735712172050</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1735712172050</updated>
+    </task>
+    <option name="localTasksCounter" value="29" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="blinky on stm32f103 blue pill" />
     <MESSAGE value="usb cdc-acm device with led blinking at higher priority" />
     <MESSAGE value="nicer log output without line numbers" />
     <MESSAGE value="run periodic loop on speedybee" />
@@ -384,6 +389,7 @@
     <MESSAGE value="basic failsafe mode" />
     <MESSAGE value="basic stabilization only feedforward" />
     <MESSAGE value="check defmt causing hang after unplugging debugger" />
-    <option name="LAST_COMMIT_MESSAGE" value="check defmt causing hang after unplugging debugger" />
+    <MESSAGE value="all tasks in other files except init/idle" />
+    <option name="LAST_COMMIT_MESSAGE" value="all tasks in other files except init/idle" />
   </component>
 </project>
