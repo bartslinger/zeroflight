@@ -49,7 +49,7 @@ pub(crate) fn ticks_to_us(ticks: u16) -> u16 {
 }
 
 pub(crate) async fn crsf_parser(
-    _cx: crate::app::crsf_parser::Context<'_>,
+    cx: crate::app::crsf_parser::Context<'_>,
     mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
     mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
 ) {
@@ -93,6 +93,8 @@ pub(crate) async fn crsf_parser(
         let yaw = crate::crsf::ticks_to_us(channels.channel_04());
         let armed_channel = crate::crsf::ticks_to_us(channels.channel_05());
         let mode = crate::crsf::ticks_to_us(channels.channel_06());
+        // ...
+        let reset_channel = crate::crsf::ticks_to_us(channels.channel_09());
 
         if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
             armed = true;
@@ -101,6 +103,11 @@ pub(crate) async fn crsf_parser(
             armed = false;
         }
         previous_armed_channel_state = armed_channel;
+
+        cx.shared
+            .flags
+            .reset_ahrs
+            .store(reset_channel > 1500, core::sync::atomic::Ordering::SeqCst);
 
         let rc_in = RcState {
             armed,

@@ -7,7 +7,7 @@ pub(crate) struct AhrsState {
 }
 
 pub(crate) async fn imu_handler(
-    _cx: crate::app::imu_handler::Context<'_>,
+    cx: crate::app::imu_handler::Context<'_>,
     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
     mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
 ) {
@@ -39,6 +39,11 @@ pub(crate) async fn imu_handler(
         let timestamp: u16 = (raw_timestamp as u32 * 32 / 30) as u16;
         let diff = timestamp.wrapping_sub(prev_timestamp);
         prev_timestamp = timestamp;
+
+        let reset_ahrs = &cx.shared.flags.reset_ahrs;
+        if reset_ahrs.load(core::sync::atomic::Ordering::SeqCst) {
+            ahrs = dcmimu::DCMIMU::new();
+        }
 
         let (dcm, _gyro_bias) = ahrs.update((gyro_x, gyro_y, gyro_z), (acc_x, acc_y, acc_z), 0.01);
 

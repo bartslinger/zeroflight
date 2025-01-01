@@ -36,15 +36,21 @@ mod app {
     use crate::imu::{imu_handler, AhrsState};
     use crate::pwm_output::pwm_output_task;
     use crate::usb::usb_tx;
+    use core::sync::atomic::AtomicBool;
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
     systick_monotonic!(Mono, 1000);
 
+    pub struct Flags {
+        pub reset_ahrs: AtomicBool,
+    }
+
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
+        flags: Flags,
     }
 
     #[local]
@@ -280,7 +286,13 @@ mod app {
 
         Mono::start(delay.release().release(), 168_000_000);
         (
-            Shared { usb_dev, serial },
+            Shared {
+                usb_dev,
+                serial,
+                flags: Flags {
+                    reset_ahrs: AtomicBool::new(false),
+                },
+            },
             Local {
                 dwt,
                 icm42688p_dma_context,
@@ -348,7 +360,7 @@ mod app {
         )]
         fn usart1_irq(cx: usart1_irq::Context);
 
-        #[task(priority = 3)]
+        #[task(priority = 3, shared = [&flags])]
         async fn crsf_parser(
             cx: crsf_parser::Context,
             mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
@@ -363,7 +375,7 @@ mod app {
             mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
         );
 
-        #[task(priority = 2)]
+        #[task(priority = 2, shared = [&flags])]
         async fn imu_handler(
             _cx: imu_handler::Context,
             mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
