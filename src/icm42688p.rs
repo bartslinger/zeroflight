@@ -1,19 +1,4 @@
-use stm32f4xx_hal::gpio::{Output, PushPull};
-
-pub(crate) trait CsPin {
-    fn set_high(&mut self);
-    fn set_low(&mut self);
-}
-
-impl<const P: char, const N: u8> CsPin for stm32f4xx_hal::gpio::Pin<P, N, Output<PushPull>> {
-    fn set_high(&mut self) {
-        self.set_high();
-    }
-
-    fn set_low(&mut self) {
-        self.set_low();
-    }
-}
+use stm32f4xx_hal::gpio::{ErasedPin, Output};
 
 const REG_WHO_AM_I: u8 = 0x75;
 const REG_PWR_MGMT0: u8 = 0x4E;
@@ -33,13 +18,16 @@ const REG_ACCEL_CONFIG_STATIC2: u8 = 0x03;
 const REG_ACCEL_CONFIG_STATIC3: u8 = 0x04;
 const REG_ACCEL_CONFIG_STATIC4: u8 = 0x05;
 
-pub(crate) struct Icm42688p<CS: CsPin> {
+pub(crate) struct Icm42688p {
     spi: stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1, false, u8>,
-    cs: CS,
+    cs: ErasedPin<Output>,
 }
 
-impl<CS: CsPin> Icm42688p<CS> {
-    pub(crate) fn new(spi: stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1>, mut cs: CS) -> Self {
+impl Icm42688p {
+    pub(crate) fn new(
+        spi: stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1>,
+        mut cs: ErasedPin<Output>,
+    ) -> Self {
         cs.set_high();
         Self { spi, cs }
     }
@@ -146,7 +134,7 @@ impl<CS: CsPin> Icm42688p<CS> {
         rx_buffer_1: &'static mut [u8; 129],
         tx_buffer_2: &'static mut [u8; 129],
         rx_buffer_2: &'static mut [u8; 129],
-    ) -> Icm42688pDmaContext<CS> {
+    ) -> Icm42688pDmaContext {
         tx_buffer_1[0] = 0x2E | 0x80;
         tx_buffer_2[0] = 0x2E | 0x80;
 
@@ -202,10 +190,10 @@ type RxTransfer = stm32f4xx_hal::dma::Transfer<
     stm32f4xx_hal::dma::PeripheralToMemory,
     &'static mut [u8; 129],
 >;
-pub(crate) struct Icm42688pDmaContext<CS: CsPin> {
+pub(crate) struct Icm42688pDmaContext {
     pub(crate) tx_transfer: TxTransfer,
     pub(crate) rx_transfer: RxTransfer,
     pub(crate) tx_buffer: Option<&'static mut [u8; 129]>,
     pub(crate) rx_buffer: Option<&'static mut [u8; 129]>,
-    pub(crate) cs: CS,
+    pub(crate) cs: ErasedPin<Output>,
 }

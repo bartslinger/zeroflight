@@ -44,7 +44,6 @@ mod app {
     use core::sync::atomic::AtomicBool;
     use heapless::pool::boxed::{Box, BoxBlock};
     use rtic_monotonics::systick::prelude::*;
-    use stm32f4xx_hal::gpio;
 
     systick_monotonic!(Mono, 1000);
 
@@ -62,8 +61,7 @@ mod app {
     #[local]
     struct Local {
         dwt: cortex_m::peripheral::DWT,
-        icm42688p_dma_context:
-            crate::icm42688p::Icm42688pDmaContext<gpio::PA4<gpio::Output<gpio::PushPull>>>,
+        icm42688p_dma_context: crate::icm42688p::Icm42688pDmaContext,
         prev_fifo_count: u16,
         imu_data_sender: rtic_sync::channel::Sender<'static, Box<IMUDATAPOOL>, 1>,
         crsf_serial: stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>,
@@ -192,7 +190,7 @@ mod app {
 
         let mut cs = gpioa.pa4.into_push_pull_output();
         cs.set_high();
-        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs);
+        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs.into());
         icm42688p.init(&mut delay);
 
         // -----------------------------------------------------------------------------------------
