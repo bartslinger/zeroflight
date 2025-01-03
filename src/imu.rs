@@ -1,3 +1,6 @@
+use crate::IMUDATAPOOL;
+use heapless::pool::boxed::Box;
+
 const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 #[derive(Copy, Clone)]
@@ -9,7 +12,7 @@ pub(crate) struct AhrsState {
 
 pub(crate) async fn imu_handler(
     cx: crate::app::imu_handler::Context<'_>,
-    mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
+    mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
     mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
 ) {
     defmt::info!("imu handler spawned");
@@ -99,9 +102,10 @@ pub(crate) fn imu_rx_irq(cx: crate::app::imu_rx_irq::Context<'_>) {
         fifo_count
     } else if filled_tx_buffer[0] == 0x30 | 0x80 {
         // Got IMU data
-        let mut output = [0u8; 16];
-        output.copy_from_slice(&filled_rx_buffer[1..17]);
-        imu_data = Some(output);
+        if let Ok(mut output) = IMUDATAPOOL.alloc([0u8; 16]) {
+            output.copy_from_slice(&filled_rx_buffer[1..17]);
+            imu_data = Some(output);
+        }
         // After that, request fifo count again
         filled_tx_buffer[0] = 0x2E | 0x80;
         0

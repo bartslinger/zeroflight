@@ -3,14 +3,14 @@ use modular_bitfield::prelude::*;
 use stm32f4xx_hal::nb;
 
 #[derive(Clone, Copy)]
-pub(crate) struct RcState {
-    pub(crate) armed: bool,
-    pub(crate) roll: u16,
-    pub(crate) pitch: u16,
-    pub(crate) throttle: u16,
-    pub(crate) yaw: u16,
-    pub(crate) mode: u16,
-    pub(crate) pitch_offset: u16,
+pub struct RcState {
+    pub armed: bool,
+    pub roll: u16,
+    pub pitch: u16,
+    pub throttle: u16,
+    pub yaw: u16,
+    pub mode: u16,
+    pub pitch_offset: u16,
 }
 
 #[bitfield]

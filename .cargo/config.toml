@@ -1,6 +1,6 @@
 [target.thumbv7m-none-eabi]
-#runner = ["./remote_runner.sh"]
-runner = ["probe-rs", "run", "--chip", "STM32F405RG", "--log-format", "{L} {s}"]
+runner = ["./remote_runner.sh"]
+#runner = ["probe-rs", "run", "--chip", "STM32F405RG", "--log-format", "{L} {s}"]
 #runner = "qemu-system-arm -machine olimex-stm32-h405 -nographic -semihosting-config enable=on,target=native -kernel"
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']

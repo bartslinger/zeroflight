@@ -14,6 +14,7 @@ mod pwm_output;
 mod usb;
 
 use defmt_rtt as _;
+use heapless::box_pool;
 use panic_halt as _;
 
 struct OutputCommand {
@@ -24,6 +25,9 @@ struct OutputCommand {
     #[allow(unused)]
     yaw: u16,
 }
+
+// Declare a pool
+box_pool!(IMUDATAPOOL: [u8; 16]);
 
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
@@ -36,7 +40,9 @@ mod app {
     use crate::imu::{imu_handler, AhrsState};
     use crate::pwm_output::pwm_output_task;
     use crate::usb::usb_tx;
+    use crate::IMUDATAPOOL;
     use core::sync::atomic::AtomicBool;
+    use heapless::pool::boxed::{Box, BoxBlock};
     use rtic_monotonics::systick::prelude::*;
     use stm32f4xx_hal::gpio;
 
@@ -59,7 +65,7 @@ mod app {
         icm42688p_dma_context:
             crate::icm42688p::Icm42688pDmaContext<gpio::PA4<gpio::Output<gpio::PushPull>>>,
         prev_fifo_count: u16,
-        imu_data_sender: rtic_sync::channel::Sender<'static, [u8; 16], 1>,
+        imu_data_sender: rtic_sync::channel::Sender<'static, Box<IMUDATAPOOL>, 1>,
         crsf_serial: stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>,
         crsf_data_sender: rtic_sync::channel::Sender<'static, u8, 64>,
         s1: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM4, 1>,
@@ -77,12 +83,17 @@ mod app {
         TX_BUFFER_2: [u8; 129] = [0x00; 129],
         RX_BUFFER_1: [u8; 129] = [0x00; 129],
         RX_BUFFER_2: [u8; 129] = [0x00; 129],
+        IMU_DATA_CHANNEL_MEMORY: [BoxBlock<[u8; 16]>; 2] = [const { BoxBlock::new() }; 2],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
         defmt::info!("init");
 
-        let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!([u8; 16], 1);
+        for block in cx.local.IMU_DATA_CHANNEL_MEMORY {
+            IMUDATAPOOL.manage(block);
+        }
+
+        let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!(Box<IMUDATAPOOL>, 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
         let (pwm_output_sender, pwm_output_receiver) =
@@ -382,7 +393,7 @@ mod app {
         #[task(priority = 2, shared = [&flags])]
         async fn imu_handler(
             _cx: imu_handler::Context,
-            mut imu_data_receiver: rtic_sync::channel::Receiver<'static, [u8; 16], 1>,
+            mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
             mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
         );
 

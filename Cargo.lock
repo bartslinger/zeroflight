@@ -810,6 +810,7 @@ dependencies = [
  "defmt-rtt",
  "embedded-hal 1.0.0",
  "futures",
+ "heapless",
  "modular-bitfield",
  "panic-halt",
  "rtic",
