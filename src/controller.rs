@@ -11,6 +11,7 @@ pub struct ControllerOutput {
     pub pitch: f32,
 }
 
+#[derive(Copy, Clone)]
 pub struct Controller {
     roll_integral: f32,
     pitch_integral: f32,
@@ -31,7 +32,7 @@ impl Controller {
 
     pub fn update(
         &mut self,
-        measurement: AhrsState,
+        measurement: &AhrsState,
         roll_setpoint_rad: f32,
         pitch_setpoint_rad: f32,
         integral_active: bool,
@@ -56,7 +57,7 @@ impl Controller {
 
     pub fn stabilize_rates(
         &mut self,
-        measurement: AhrsState,
+        measurement: &AhrsState,
         roll_rate_setpoint: f32,
         pitch_rate_setpoint: f32,
         integral_active: bool,

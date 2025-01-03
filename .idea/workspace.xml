@@ -7,11 +7,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="basic takeoff mode by adding ch10 to pitch setpoint">
+    <list default="true" id="6c9ede56-7a2f-436e-9a69-6c54a3d30835" name="Changes" comment="reset controller integral together with ahrs reset">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/control.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/control.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -49,7 +48,7 @@
     &quot;Cargo.Run zeroflight.executor&quot;: &quot;Run&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -132,7 +131,8 @@
       <workItem from="1735600714055" duration="1575000" />
       <workItem from="1735602303590" duration="3443000" />
       <workItem from="1735607582125" duration="14818000" />
-      <workItem from="1735711200344" duration="16532000" />
+      <workItem from="1735711200344" duration="19665000" />
+      <workItem from="1735874279129" duration="2052000" />
     </task>
     <task id="LOCAL-00001" summary="blinky on stm32f103 blue pill">
       <option name="closed" value="true" />
@@ -430,14 +430,21 @@
       <option name="project" value="LOCAL" />
       <updated>1735735992438</updated>
     </task>
-    <option name="localTasksCounter" value="38" />
+    <task id="LOCAL-00038" summary="reset controller integral together with ahrs reset">
+      <option name="closed" value="true" />
+      <created>1735736289673</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1735736289673</updated>
+    </task>
+    <option name="localTasksCounter" value="39" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="read who-am-i in a loop with dma" />
     <MESSAGE value="modified hal to allow dma with variable length buffer" />
     <MESSAGE value="continuously request fifo count and imu data" />
     <MESSAGE value="pass imu data via channel, separate files" />
@@ -462,6 +469,7 @@
     <MESSAGE value="ahrs reset on rc channel 9" />
     <MESSAGE value="add acro mode" />
     <MESSAGE value="basic takeoff mode by adding ch10 to pitch setpoint" />
-    <option name="LAST_COMMIT_MESSAGE" value="basic takeoff mode by adding ch10 to pitch setpoint" />
+    <MESSAGE value="reset controller integral together with ahrs reset" />
+    <option name="LAST_COMMIT_MESSAGE" value="reset controller integral together with ahrs reset" />
   </component>
 </project>
