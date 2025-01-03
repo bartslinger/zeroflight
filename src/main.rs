@@ -317,22 +317,26 @@ mod app {
         let mut prev_cyc_cnt = dwt.cyccnt.read();
         let mut counter = 0;
         loop {
-            cortex_m::asm::nop();
-            counter += 1;
-            if counter % 100_000 == 0 {
-                // defmt::info!("write tons of data in idle loop to check if this locks the FC");
-                // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
-                // it's fine when the chip is started without debugger
-            }
-            if counter >= 16_800_000 {
-                let cyc_cnt = dwt.cyccnt.read();
-                let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
-                let idle_time = 16_800_000_f32 * 10.;
-                let _ratio = 100. * (idle_time / time_passed as f32);
+            if true {
+                cortex_m::asm::wfi();
+            } else {
+                cortex_m::asm::nop();
+                counter += 1;
+                if counter % 100_000 == 0 {
+                    // defmt::info!("write tons of data in idle loop to check if this locks the FC");
+                    // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
+                    // it's fine when the chip is started without debugger
+                }
+                if counter >= 16_800_000 {
+                    let cyc_cnt = dwt.cyccnt.read();
+                    let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
+                    let idle_time = 16_800_000_f32 * 10.;
+                    let ratio = 100. * (idle_time / time_passed as f32);
 
-                // defmt::info!("Idle: {}", ratio);
-                prev_cyc_cnt = cyc_cnt;
-                counter = 0;
+                    defmt::info!("Idle: {}", ratio);
+                    prev_cyc_cnt = cyc_cnt;
+                    counter = 0;
+                }
             }
         }
     }
