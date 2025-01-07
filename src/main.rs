@@ -11,7 +11,11 @@ mod crsf;
 mod icm42688p;
 mod imu;
 mod pwm_output;
+mod servo;
 mod usb;
+
+#[cfg(feature = "speedybee")]
+mod speedybee_bsp;
 
 use defmt_rtt as _;
 use heapless::box_pool;
@@ -29,7 +33,7 @@ struct OutputCommand {
 // Declare a pool
 box_pool!(IMUDATAPOOL: [u8; 16]);
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
+#[rtic::app(device = speedybee_bsp, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::blink::blink;
     use crate::control::control_task;
@@ -39,6 +43,8 @@ mod app {
     use crate::imu::imu_rx_irq;
     use crate::imu::{imu_handler, AhrsState};
     use crate::pwm_output::pwm_output_task;
+    use crate::servo::Servo;
+    use crate::speedybee_bsp::{self, Board, PwmOutputs};
     use crate::usb::usb_tx;
     use crate::IMUDATAPOOL;
     use core::sync::atomic::AtomicBool;
@@ -71,6 +77,7 @@ mod app {
         s4: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM3, 3>,
         s5: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 2>,
         s6: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 3>,
+        pwm_outputs: PwmOutputs,
     }
 
     #[init(local = [
@@ -85,6 +92,7 @@ mod app {
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
+        let board = Board::new(cx.device);
         defmt::info!("init");
 
         for block in cx.local.IMU_DATA_CHANNEL_MEMORY {
@@ -98,13 +106,8 @@ mod app {
             rtic_sync::make_channel!(crate::OutputCommand, 1);
         let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
 
-        imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
-        crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
-        control_task::spawn(ahrs_state_receiver, rc_state_receiver, pwm_output_sender).ok();
-        pwm_output_task::spawn(pwm_output_receiver).ok();
-
         defmt::info!("Clock setup");
-        let rcc = cx.device.RCC.constrain();
+        let rcc = board.RCC.constrain();
         let clocks = rcc.cfgr.sysclk(168.MHz()).require_pll48clk().freeze();
         defmt::info!("SYSCLK: {}", clocks.sysclk().raw());
         defmt::info!("HCLK: {}", clocks.hclk().raw());
@@ -114,9 +117,9 @@ mod app {
 
         let mut delay = cx.core.SYST.delay(&clocks);
 
-        let gpioa = cx.device.GPIOA.split();
-        let gpiob = cx.device.GPIOB.split();
-        let gpioc = cx.device.GPIOC.split();
+        let gpioa = board.GPIOA.split();
+        let gpiob = board.GPIOB.split();
+        let gpioc = board.GPIOC.split();
         // -----------------------------------------------------------------------------------------
         // Enable cycle counter for counting clock ticks
         let mut dwt = cx.core.DWT;
@@ -126,14 +129,14 @@ mod app {
 
         // -----------------------------------------------------------------------------------------
         // DMA
-        let dma2 = stm32f4xx_hal::dma::StreamsTuple::new(cx.device.DMA2);
+        let dma2 = stm32f4xx_hal::dma::StreamsTuple::new(board.DMA2);
 
         // -----------------------------------------------------------------------------------------
         // Configure I2C1
         let scl = gpiob.pb8.into_alternate_open_drain();
         let sda = gpiob.pb9.into_alternate_open_drain();
         let mut i2c = stm32f4xx_hal::i2c::I2c::new(
-            cx.device.I2C1,
+            board.I2C1,
             (scl, sda),
             stm32f4xx_hal::i2c::Mode::from(400.kHz()),
             &clocks,
@@ -178,7 +181,7 @@ mod app {
         let mosi = gpioa.pa7.into_alternate();
 
         let spi1 = stm32f4xx_hal::spi::Spi::new(
-            cx.device.SPI1,
+            board.SPI1,
             (sck, miso, mosi),
             stm32f4xx_hal::spi::Mode {
                 polarity: stm32f4xx_hal::spi::Polarity::IdleHigh,
@@ -215,10 +218,10 @@ mod app {
         //     DEF_TIM(TIM8,   CH3, PC8,  TIM_USE_OUTPUT_AUTO,   1, 0), // S5 D(2,4,7)
         //     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
 
-        let (_, (_, _, tim3_ch3, tim3_ch4)) = cx.device.TIM3.pwm_us(20_000.micros(), &clocks);
-        let (_, (tim4_ch1, tim4_ch2, _, _)) = cx.device.TIM4.pwm_us(20_000.micros(), &clocks);
+        let (_, (_, _, tim3_ch3, tim3_ch4)) = board.TIM3.pwm_us(20_000.micros(), &clocks);
+        let (_, (tim4_ch1, tim4_ch2, _, _)) = board.TIM4.pwm_us(20_000.micros(), &clocks);
 
-        let (_, (_, _, tim8_ch3, tim8_ch4)) = cx.device.TIM8.pwm_us(20_000.micros(), &clocks);
+        let (_, (_, _, tim8_ch3, tim8_ch4)) = board.TIM8.pwm_us(20_000.micros(), &clocks);
 
         let mut s1 = tim4_ch2.with(gpiob.pb7);
         let mut s2 = tim4_ch1.with(gpiob.pb6);
@@ -248,7 +251,7 @@ mod app {
         // -----------------------------------------------------------------------------------------
         // Serial ELRS receiver
 
-        let usart1 = cx.device.USART1;
+        let usart1 = board.USART1;
         let tx = gpioa.pa9;
         let rx = gpioa.pa10;
 
@@ -268,9 +271,9 @@ mod app {
         cortex_m::asm::delay(clocks.sysclk().raw() / 100);
 
         let usb = stm32f4xx_hal::otg_fs::USB {
-            usb_global: cx.device.OTG_FS_GLOBAL,
-            usb_device: cx.device.OTG_FS_DEVICE,
-            usb_pwrclk: cx.device.OTG_FS_PWRCLK,
+            usb_global: board.OTG_FS_GLOBAL,
+            usb_device: board.OTG_FS_DEVICE,
+            usb_pwrclk: board.OTG_FS_PWRCLK,
             pin_dm: gpioa.pa11.into(),
             pin_dp: usb_dp.into(),
             hclk: clocks.hclk(),
@@ -293,6 +296,12 @@ mod app {
         .unwrap()
         .build();
 
+        // Spawn tasks
+        imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
+        crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
+        control_task::spawn(ahrs_state_receiver, rc_state_receiver, pwm_output_sender).ok();
+        pwm_output_task::spawn(pwm_output_receiver).ok();
+
         Mono::start(delay.release().release(), 168_000_000);
         (
             Shared {
@@ -314,6 +323,7 @@ mod app {
                 s4,
                 s5,
                 s6,
+                pwm_outputs: (Servo::new(s2)),
             },
         )
     }
