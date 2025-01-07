@@ -1,11 +1,12 @@
+use stm32f4xx_hal::gpio;
 use stm32f4xx_hal::pac::{
     ADC1, ADC2, ADC3, ADC_COMMON, CAN1, CAN2, CRC, CRYP, DAC, DBGMCU, DCMI, DMA1, DMA2, EXTI,
-    FLASH, FPU, FPU_CPACR, FSMC, GPIOA, GPIOB, GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH, GPIOI,
-    GPIOJ, GPIOK, HASH, I2C1, I2C2, I2C3, I2S2EXT, I2S3EXT, IWDG, LTDC, NVIC_STIR, OTG_FS_DEVICE,
-    OTG_FS_GLOBAL, OTG_FS_HOST, OTG_FS_PWRCLK, OTG_HS_DEVICE, OTG_HS_GLOBAL, OTG_HS_HOST,
-    OTG_HS_PWRCLK, PWR, RCC, RNG, RTC, SAI1, SCB_ACTRL, SDIO, SPI1, SPI2, SPI3, SPI4, SPI5, SPI6,
-    STK, SYSCFG, TIM1, TIM10, TIM11, TIM12, TIM13, TIM14, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8,
-    TIM9, UART4, UART5, USART1, USART2, USART3, USART6, WWDG,
+    FLASH, FPU, FPU_CPACR, FSMC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH, GPIOI, GPIOJ, GPIOK, HASH,
+    I2C1, I2C2, I2C3, I2S2EXT, I2S3EXT, IWDG, LTDC, NVIC_STIR, OTG_FS_DEVICE, OTG_FS_GLOBAL,
+    OTG_FS_HOST, OTG_FS_PWRCLK, OTG_HS_DEVICE, OTG_HS_GLOBAL, OTG_HS_HOST, OTG_HS_PWRCLK, PWR, RNG,
+    RTC, SAI1, SCB_ACTRL, SDIO, SPI1, SPI2, SPI3, SPI4, SPI5, SPI6, STK, SYSCFG, TIM1, TIM10,
+    TIM11, TIM12, TIM13, TIM14, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, UART4, UART5,
+    USART1, USART2, USART3, USART6, WWDG,
 };
 use stm32f4xx_hal::timer::PwmChannel;
 
@@ -31,6 +32,29 @@ pub struct PwmOutputs {
     pub s5: S5,
     pub s6: S6,
 }
+
+pub struct I2cPins<SCL, SDA> {
+    pub scl: SCL,
+    pub sda: SDA,
+}
+
+pub struct UsartPins<TX, RX> {
+    pub tx: TX,
+    pub rx: RX,
+}
+
+pub struct SpiPins<SCK, MISO, MOSI, CS> {
+    pub sck: SCK,
+    pub miso: MISO,
+    pub mosi: MOSI,
+    pub cs: CS,
+}
+
+pub struct UsbPins<DP, DM> {
+    pub dp: DP,
+    pub dm: DM,
+}
+
 pub type CrsfSerial = stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>;
 
 // For RTIC
@@ -40,10 +64,17 @@ pub use stm32f4xx_hal::pac::interrupt;
 pub use stm32f4xx_hal::pac::Peripherals;
 #[doc(hidden)]
 pub use stm32f4xx_hal::pac::NVIC_PRIO_BITS;
+use stm32f4xx_hal::rcc::Clocks;
 
 #[allow(non_snake_case)]
 #[allow(unused)]
 pub struct Board {
+    pub clocks: Clocks,
+    pub pwm_outputs: PwmOutputs,
+    pub i2c1: I2cPins<gpio::PB8, gpio::PB9>,
+    pub usart1: UsartPins<gpio::PA9, gpio::PA10>,
+    pub spi1: SpiPins<gpio::PA5, gpio::PA6, gpio::PA7, gpio::PA4>,
+    pub usb_pins: UsbPins<gpio::PA12, gpio::PA11>,
     ///RNG
     pub RNG: RNG,
     ///DCMI
@@ -57,7 +88,7 @@ pub struct Board {
     ///DMA1
     pub DMA1: DMA1,
     ///RCC
-    pub RCC: RCC,
+    // pub RCC: RCC,
     ///GPIOI
     pub GPIOI: GPIOI,
     ///GPIOH
@@ -71,15 +102,15 @@ pub struct Board {
     ///GPIOD
     pub GPIOD: GPIOD,
     ///GPIOC
-    pub GPIOC: GPIOC,
+    // pub GPIOC: GPIOC,
     ///GPIOJ
     pub GPIOJ: GPIOJ,
     ///GPIOK
     pub GPIOK: GPIOK,
     ///GPIOB
-    pub GPIOB: GPIOB,
+    // pub GPIOB: GPIOB,
     ///GPIOA
-    pub GPIOA: GPIOA,
+    // pub GPIOA: GPIOA,
     ///SYSCFG
     pub SYSCFG: SYSCFG,
     ///SPI1
@@ -139,13 +170,13 @@ pub struct Board {
     ///TIM1
     pub TIM1: TIM1,
     ///TIM8
-    pub TIM8: TIM8,
+    // pub TIM8: TIM8,
     ///TIM2
     pub TIM2: TIM2,
     ///TIM3
-    pub TIM3: TIM3,
+    // pub TIM3: TIM3,
     ///TIM4
-    pub TIM4: TIM4,
+    // pub TIM4: TIM4,
     ///TIM5
     pub TIM5: TIM5,
     ///TIM9
@@ -214,25 +245,106 @@ impl Board {}
 
 impl From<Peripherals> for Board {
     fn from(p: Peripherals) -> Self {
+        use stm32f4xx_hal::prelude::*;
+        let rcc = p.RCC.constrain();
+        let clocks = rcc.cfgr.sysclk(168.MHz()).require_pll48clk().freeze();
+        defmt::info!("SYSCLK: {}", clocks.sysclk().raw());
+        defmt::info!("HCLK: {}", clocks.hclk().raw());
+        defmt::info!("PCLK1: {}", clocks.pclk1().raw());
+        defmt::info!("PCLK2: {}", clocks.pclk2().raw());
+        assert!(clocks.is_pll48clk_valid());
+
+        let gpioa = p.GPIOA.split();
+        let gpiob = p.GPIOB.split();
+        let gpioc = p.GPIOC.split();
+
+        let (_, (_, _, tim3_ch3, tim3_ch4)) = p.TIM3.pwm_us(20_000.micros(), &clocks);
+        let (_, (tim4_ch1, tim4_ch2, _, _)) = p.TIM4.pwm_us(20_000.micros(), &clocks);
+
+        let (_, (_, _, tim8_ch3, tim8_ch4)) = p.TIM8.pwm_us(20_000.micros(), &clocks);
+
+        let mut s1 = tim4_ch2.with(gpiob.pb7);
+        let mut s2 = tim4_ch1.with(gpiob.pb6);
+        let mut s3 = tim3_ch3.with(gpiob.pb0);
+        let mut s4 = tim3_ch4.with(gpiob.pb1);
+        let mut s5 = tim8_ch3.with(gpioc.pc8);
+        let mut s6 = tim8_ch4.with(gpioc.pc9);
+
+        s1.set_duty(900);
+        s1.enable();
+
+        s2.set_duty(900);
+        s2.enable();
+
+        s3.set_duty(1500);
+        s3.enable();
+
+        s4.set_duty(1500);
+        s4.enable();
+
+        s5.set_duty(1500);
+        s5.enable();
+
+        s6.set_duty(1500);
+        s6.enable();
+
+        let i2c1 = I2cPins {
+            scl: gpiob.pb8,
+            sda: gpiob.pb9,
+        };
+
+        let pwm_outputs = PwmOutputs {
+            s1,
+            s2,
+            s3,
+            s4,
+            s5,
+            s6,
+        };
+
+        let usart1 = UsartPins {
+            tx: gpioa.pa9,
+            rx: gpioa.pa10,
+        };
+        // let usart1 = board.USART1;
+
+        let spi1 = SpiPins {
+            sck: gpioa.pa5,
+            miso: gpioa.pa6,
+            mosi: gpioa.pa7,
+            cs: gpioa.pa4,
+        };
+
+        let usb_pins = UsbPins {
+            dp: gpioa.pa12,
+            dm: gpioa.pa11,
+        };
+
         Self {
+            clocks,
+            pwm_outputs,
+            i2c1,
+            usart1,
+            spi1,
+            usb_pins,
             RNG: p.RNG,
             DCMI: p.DCMI,
             FSMC: p.FSMC,
             DBGMCU: p.DBGMCU,
             DMA2: p.DMA2,
             DMA1: p.DMA1,
-            RCC: p.RCC,
+            // RCC: p.RCC,
             GPIOI: p.GPIOI,
             GPIOH: p.GPIOH,
             GPIOG: p.GPIOG,
             GPIOF: p.GPIOF,
             GPIOE: p.GPIOE,
             GPIOD: p.GPIOD,
-            GPIOC: p.GPIOC,
+            // GPIOC: p.GPIOC,
             GPIOJ: p.GPIOJ,
             GPIOK: p.GPIOK,
-            GPIOB: p.GPIOB,
-            GPIOA: p.GPIOA,
+            // GPIOB: p.GPIOB,
+            // GPIOA: p.GPIOA,
             SYSCFG: p.SYSCFG,
             SPI1: p.SPI1,
             SPI2: p.SPI2,
@@ -262,10 +374,10 @@ impl From<Peripherals> for Board {
             UART5: p.UART5,
             ADC_COMMON: p.ADC_COMMON,
             TIM1: p.TIM1,
-            TIM8: p.TIM8,
+            // TIM8: p.TIM8,
             TIM2: p.TIM2,
-            TIM3: p.TIM3,
-            TIM4: p.TIM4,
+            // TIM3: p.TIM3,
+            // TIM4: p.TIM4,
             TIM5: p.TIM5,
             TIM9: p.TIM9,
             TIM12: p.TIM12,

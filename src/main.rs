@@ -99,20 +99,8 @@ mod app {
             rtic_sync::make_channel!(crate::OutputCommand, 1);
         let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
 
-        defmt::info!("Clock setup");
-        let rcc = board.RCC.constrain();
-        let clocks = rcc.cfgr.sysclk(168.MHz()).require_pll48clk().freeze();
-        defmt::info!("SYSCLK: {}", clocks.sysclk().raw());
-        defmt::info!("HCLK: {}", clocks.hclk().raw());
-        defmt::info!("PCLK1: {}", clocks.pclk1().raw());
-        defmt::info!("PCLK2: {}", clocks.pclk2().raw());
-        assert!(clocks.is_pll48clk_valid());
+        let mut delay = cx.core.SYST.delay(&board.clocks);
 
-        let mut delay = cx.core.SYST.delay(&clocks);
-
-        let gpioa = board.GPIOA.split();
-        let gpiob = board.GPIOB.split();
-        let gpioc = board.GPIOC.split();
         // -----------------------------------------------------------------------------------------
         // Enable cycle counter for counting clock ticks
         let mut dwt = cx.core.DWT;
@@ -125,25 +113,24 @@ mod app {
         let dma2 = stm32f4xx_hal::dma::StreamsTuple::new(board.DMA2);
 
         // -----------------------------------------------------------------------------------------
-        // Configure I2C1
-        let scl = gpiob.pb8.into_alternate_open_drain();
-        let sda = gpiob.pb9.into_alternate_open_drain();
-        let mut i2c = stm32f4xx_hal::i2c::I2c::new(
-            board.I2C1,
-            (scl, sda),
-            stm32f4xx_hal::i2c::Mode::from(400.kHz()),
-            &clocks,
-        );
-
-        // -----------------------------------------------------------------------------------------
         // Scan I2C
         defmt::info!("Start I2C scan...");
+
+        let mut i2c1 = stm32f4xx_hal::i2c::I2c::new(
+            board.I2C1,
+            (
+                board.i2c1.scl.into_open_drain_output(),
+                board.i2c1.sda.into_open_drain_output(),
+            ),
+            stm32f4xx_hal::i2c::Mode::from(400.kHz()),
+            &board.clocks,
+        );
 
         const VALID_ADDR_RANGE: core::ops::Range<u8> = 0x08..0x78;
 
         for addr in 0x00_u8..0x80 {
             let byte: [u8; 1] = [0; 1];
-            if VALID_ADDR_RANGE.contains(&addr) && i2c.write(addr, &byte).is_ok() {
+            if VALID_ADDR_RANGE.contains(&addr) && i2c1.write(addr, &byte).is_ok() {
                 defmt::info!("Found device at {:02x}", addr);
             }
         }
@@ -155,7 +142,7 @@ mod app {
 
         let mut buf = [0];
         // who am i?
-        let res = i2c.write_read(0x76_u8, &[0x0D], &mut buf);
+        let res = i2c1.write_read(0x76_u8, &[0x0D], &mut buf);
         if let Err(_) = res {
             defmt::error!("I2C write_read error");
         }
@@ -169,22 +156,18 @@ mod app {
         // -----------------------------------------------------------------------------------------
         // Configure ICM-42688-P on SPI
 
-        let sck = gpioa.pa5.into_alternate();
-        let miso = gpioa.pa6.into_alternate();
-        let mosi = gpioa.pa7.into_alternate();
-
         let spi1 = stm32f4xx_hal::spi::Spi::new(
             board.SPI1,
-            (sck, miso, mosi),
+            (board.spi1.sck, board.spi1.miso, board.spi1.mosi),
             stm32f4xx_hal::spi::Mode {
                 polarity: stm32f4xx_hal::spi::Polarity::IdleHigh,
                 phase: stm32f4xx_hal::spi::Phase::CaptureOnSecondTransition,
             },
             1.MHz(),
-            &clocks,
+            &board.clocks,
         );
 
-        let mut cs = gpioa.pa4.into_push_pull_output();
+        let mut cs = board.spi1.cs.into_push_pull_output();
         cs.set_high();
         let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs.into());
         icm42688p.init(&mut delay);
@@ -211,65 +194,32 @@ mod app {
         //     DEF_TIM(TIM8,   CH3, PC8,  TIM_USE_OUTPUT_AUTO,   1, 0), // S5 D(2,4,7)
         //     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
 
-        let (_, (_, _, tim3_ch3, tim3_ch4)) = board.TIM3.pwm_us(20_000.micros(), &clocks);
-        let (_, (tim4_ch1, tim4_ch2, _, _)) = board.TIM4.pwm_us(20_000.micros(), &clocks);
-
-        let (_, (_, _, tim8_ch3, tim8_ch4)) = board.TIM8.pwm_us(20_000.micros(), &clocks);
-
-        let mut s1 = tim4_ch2.with(gpiob.pb7);
-        let mut s2 = tim4_ch1.with(gpiob.pb6);
-        let mut s3 = tim3_ch3.with(gpiob.pb0);
-        let mut s4 = tim3_ch4.with(gpiob.pb1);
-        let mut s5 = tim8_ch3.with(gpioc.pc8);
-        let mut s6 = tim8_ch4.with(gpioc.pc9);
-
-        s1.set_duty(900);
-        s1.enable();
-
-        s2.set_duty(900);
-        s2.enable();
-
-        s3.set_duty(1500);
-        s3.enable();
-
-        s4.set_duty(1500);
-        s4.enable();
-
-        s5.set_duty(1500);
-        s5.enable();
-
-        s6.set_duty(1500);
-        s6.enable();
-
         // -----------------------------------------------------------------------------------------
         // Serial ELRS receiver
 
-        let usart1 = board.USART1;
-        let tx = gpioa.pa9;
-        let rx = gpioa.pa10;
-
-        let mut crsf_serial = usart1
+        let mut crsf_serial = board
+            .USART1
             .serial(
-                (tx, rx),
+                (board.usart1.tx, board.usart1.rx),
                 stm32f4xx_hal::serial::Config::default().baudrate(420_000.bps()),
-                &clocks,
+                &board.clocks,
             )
             .unwrap();
         crsf_serial.listen(stm32f4xx_hal::serial::Event::RxNotEmpty);
 
         // -----------------------------------------------------------------------------------------
         // Configure USB as CDC-ACM
-        let mut usb_dp = gpioa.pa12.into_push_pull_output();
+        let mut usb_dp = board.usb_pins.dp.into_push_pull_output();
         usb_dp.set_low();
-        cortex_m::asm::delay(clocks.sysclk().raw() / 100);
+        cortex_m::asm::delay(board.clocks.sysclk().raw() / 100);
 
         let usb = stm32f4xx_hal::otg_fs::USB {
             usb_global: board.OTG_FS_GLOBAL,
             usb_device: board.OTG_FS_DEVICE,
             usb_pwrclk: board.OTG_FS_PWRCLK,
-            pin_dm: gpioa.pa11.into(),
+            pin_dm: board.usb_pins.dm.into(),
             pin_dp: usb_dp.into(),
-            hclk: clocks.hclk(),
+            hclk: board.clocks.hclk(),
         };
 
         let usb_bus = stm32f4xx_hal::otg_fs::UsbBus::new(usb, cx.local.EP_MEMORY);
@@ -311,14 +261,7 @@ mod app {
                 imu_data_sender,
                 crsf_serial,
                 crsf_data_sender,
-                pwm_outputs: PwmOutputs {
-                    s1,
-                    s2,
-                    s3,
-                    s4,
-                    s5,
-                    s6,
-                },
+                pwm_outputs: board.pwm_outputs,
             },
         )
     }
