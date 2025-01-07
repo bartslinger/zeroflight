@@ -11,11 +11,9 @@ mod crsf;
 mod icm42688p;
 mod imu;
 mod pwm_output;
-mod servo;
 mod usb;
 
-#[cfg(feature = "speedybee")]
-mod speedybee_bsp;
+mod boards;
 
 use defmt_rtt as _;
 use heapless::box_pool;
@@ -33,9 +31,10 @@ struct OutputCommand {
 // Declare a pool
 box_pool!(IMUDATAPOOL: [u8; 16]);
 
-#[rtic::app(device = speedybee_bsp, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
+#[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::blink::blink;
+    use crate::boards::board::{self, Board, PwmOutputs};
     use crate::control::control_task;
     use crate::crsf::crsf_parser;
     use crate::crsf::usart1_irq;
@@ -43,8 +42,6 @@ mod app {
     use crate::imu::imu_rx_irq;
     use crate::imu::{imu_handler, AhrsState};
     use crate::pwm_output::pwm_output_task;
-    use crate::servo::Servo;
-    use crate::speedybee_bsp::{self, Board, PwmOutputs};
     use crate::usb::usb_tx;
     use crate::IMUDATAPOOL;
     use core::sync::atomic::AtomicBool;
@@ -70,13 +67,8 @@ mod app {
         icm42688p_dma_context: crate::icm42688p::Icm42688pDmaContext,
         prev_fifo_count: u16,
         imu_data_sender: rtic_sync::channel::Sender<'static, Box<IMUDATAPOOL>, 1>,
-        crsf_serial: stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>,
+        crsf_serial: board::CrsfSerial,
         crsf_data_sender: rtic_sync::channel::Sender<'static, u8, 64>,
-        s1: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM4, 1>,
-        s3: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM3, 2>,
-        s4: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM3, 3>,
-        s5: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 2>,
-        s6: stm32f4xx_hal::timer::PwmChannel<stm32f4xx_hal::pac::TIM8, 3>,
         pwm_outputs: PwmOutputs,
     }
 
@@ -92,7 +84,8 @@ mod app {
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
-        let board = Board::new(cx.device);
+        let board = Board::from(cx.device);
+
         defmt::info!("init");
 
         for block in cx.local.IMU_DATA_CHANNEL_MEMORY {
@@ -318,12 +311,14 @@ mod app {
                 imu_data_sender,
                 crsf_serial,
                 crsf_data_sender,
-                s1,
-                s3,
-                s4,
-                s5,
-                s6,
-                pwm_outputs: (Servo::new(s2)),
+                pwm_outputs: PwmOutputs {
+                    s1,
+                    s2,
+                    s3,
+                    s4,
+                    s5,
+                    s6,
+                },
             },
         )
     }
@@ -361,7 +356,7 @@ mod app {
     }
 
     extern "Rust" {
-        #[task(priority = 10, local = [s1, s3, s4, s5, s6])]
+        #[task(priority = 10, local = [pwm_outputs])]
         async fn pwm_output_task(
             cx: pwm_output_task::Context,
             mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, crate::OutputCommand, 1>,

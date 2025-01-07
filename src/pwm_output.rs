@@ -19,9 +19,9 @@ pub(crate) async fn pwm_output_task(
                 // );
                 if rc_state.armed {
                     let throttle = rc_state.throttle.min(2000).max(1000);
-                    cx.local.s1.set_duty(throttle);
+                    cx.local.pwm_outputs.s1.set_duty(throttle);
                 } else {
-                    cx.local.s1.set_duty(900);
+                    cx.local.pwm_outputs.s1.set_duty(900);
                 };
 
                 // scale roll 60%
@@ -35,21 +35,29 @@ pub(crate) async fn pwm_output_task(
                 let s6_duty = rc_state.pitch;
 
                 cx.local
+                    .pwm_outputs
                     .s3
                     .set_duty(s3_duty.min(roll_max as u16).max(roll_min as u16));
                 cx.local
+                    .pwm_outputs
                     .s4
                     .set_duty(s4_duty.min(roll_max as u16).max(roll_min as u16));
-                cx.local.s5.set_duty(s5_duty.min(2000).max(1000));
-                cx.local.s6.set_duty(s6_duty.min(2000).max(1000));
+                cx.local
+                    .pwm_outputs
+                    .s5
+                    .set_duty(s5_duty.min(2000).max(1000));
+                cx.local
+                    .pwm_outputs
+                    .s6
+                    .set_duty(s6_duty.min(2000).max(1000));
             }
             Ok(Err(_)) | Err(_) => {
                 defmt::error!("pwm output timeout");
-                cx.local.s1.set_duty(900);
-                cx.local.s3.set_duty(1500);
-                cx.local.s4.set_duty(1500);
-                cx.local.s5.set_duty(1500);
-                cx.local.s6.set_duty(1500);
+                cx.local.pwm_outputs.s1.set_duty(900);
+                cx.local.pwm_outputs.s3.set_duty(1500);
+                cx.local.pwm_outputs.s4.set_duty(1500);
+                cx.local.pwm_outputs.s5.set_duty(1500);
+                cx.local.pwm_outputs.s6.set_duty(1500);
             }
         }
     }

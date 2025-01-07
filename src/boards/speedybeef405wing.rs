@@ -1,4 +1,3 @@
-use crate::servo::Servo;
 use stm32f4xx_hal::pac::{
     ADC1, ADC2, ADC3, ADC_COMMON, CAN1, CAN2, CRC, CRYP, DAC, DBGMCU, DCMI, DMA1, DMA2, EXTI,
     FLASH, FPU, FPU_CPACR, FSMC, GPIOA, GPIOB, GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH, GPIOI,
@@ -10,12 +9,40 @@ use stm32f4xx_hal::pac::{
 };
 use stm32f4xx_hal::timer::PwmChannel;
 
-pub type PwmOutputs = Servo<PwmChannel<TIM4, 0>>;
+//     DEF_TIM(TIM4,   CH2, PB7,  TIM_USE_OUTPUT_AUTO,   1, 0), // S1 D(1,3,2)
+//     DEF_TIM(TIM4,   CH1, PB6,  TIM_USE_OUTPUT_AUTO,   1, 0), // S2 D(1,0,2)
+//
+//     DEF_TIM(TIM3,   CH3, PB0,  TIM_USE_OUTPUT_AUTO,   1, 0), // S3 D(1,7,5)
+//     DEF_TIM(TIM3,   CH4, PB1,  TIM_USE_OUTPUT_AUTO,   1, 0), // S4 D(1,2,5)
+//     DEF_TIM(TIM8,   CH3, PC8,  TIM_USE_OUTPUT_AUTO,   1, 0), // S5 D(2,4,7)
+//     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
+pub type S1 = PwmChannel<TIM4, 1>;
+pub type S2 = PwmChannel<TIM4, 0>;
+pub type S3 = PwmChannel<TIM3, 2>;
+pub type S4 = PwmChannel<TIM3, 3>;
+pub type S5 = PwmChannel<TIM8, 2>;
+pub type S6 = PwmChannel<TIM8, 3>;
 
+pub struct PwmOutputs {
+    pub s1: S1,
+    pub s2: S2,
+    pub s3: S3,
+    pub s4: S4,
+    pub s5: S5,
+    pub s6: S6,
+}
+pub type CrsfSerial = stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>;
+
+// For RTIC
+#[doc(hidden)]
+pub use stm32f4xx_hal::pac::interrupt;
+#[doc(hidden)]
+pub use stm32f4xx_hal::pac::Peripherals;
+#[doc(hidden)]
 pub use stm32f4xx_hal::pac::NVIC_PRIO_BITS;
-pub use stm32f4xx_hal::pac::{interrupt, Peripherals};
 
 #[allow(non_snake_case)]
+#[allow(unused)]
 pub struct Board {
     ///RNG
     pub RNG: RNG,
@@ -183,14 +210,10 @@ pub struct Board {
     pub SCB_ACTRL: SCB_ACTRL,
 }
 
-impl Board {
-    // #[inline]
-    // pub fn take() -> Option<Self> {
-    //     let peripherals = stm32f4xx_hal::pac::Peripherals::take()?;
-    //     Some(Self::new(peripherals))
-    // }
+impl Board {}
 
-    pub fn new(p: stm32f4xx_hal::pac::Peripherals) -> Self {
+impl From<Peripherals> for Board {
+    fn from(p: Peripherals) -> Self {
         Self {
             RNG: p.RNG,
             DCMI: p.DCMI,
