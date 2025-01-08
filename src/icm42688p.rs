@@ -18,16 +18,13 @@ const REG_ACCEL_CONFIG_STATIC2: u8 = 0x03;
 const REG_ACCEL_CONFIG_STATIC3: u8 = 0x04;
 const REG_ACCEL_CONFIG_STATIC4: u8 = 0x05;
 
-pub(crate) struct Icm42688p {
-    spi: stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1, false, u8>,
+pub(crate) struct Icm42688p<SPIDEV> {
+    spi: SPIDEV, //stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1, false, u8>,
     cs: ErasedPin<Output>,
 }
 
-impl Icm42688p {
-    pub(crate) fn new(
-        spi: stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1>,
-        mut cs: ErasedPin<Output>,
-    ) -> Self {
+impl<SPIDEV: embedded_hal::spi::SpiBus> Icm42688p<SPIDEV> {
+    pub(crate) fn new(spi: SPIDEV, mut cs: ErasedPin<Output>) -> Self {
         cs.set_high();
         Self { spi, cs }
     }
@@ -126,52 +123,8 @@ impl Icm42688p {
         self.cs.set_high();
     }
 
-    pub(crate) fn start_dma(
-        mut self,
-        tx_stream: stm32f4xx_hal::dma::StreamX<stm32f4xx_hal::pac::DMA2, 3>,
-        rx_stream: stm32f4xx_hal::dma::StreamX<stm32f4xx_hal::pac::DMA2, 0>,
-        tx_buffer_1: &'static mut [u8; 129],
-        rx_buffer_1: &'static mut [u8; 129],
-        tx_buffer_2: &'static mut [u8; 129],
-        rx_buffer_2: &'static mut [u8; 129],
-    ) -> Icm42688pDmaContext {
-        tx_buffer_1[0] = 0x2E | 0x80;
-        tx_buffer_2[0] = 0x2E | 0x80;
-
-        let (tx, rx) = self.spi.use_dma().txrx();
-        let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
-            rx_stream,
-            rx,
-            rx_buffer_1,
-            Some(3),
-            None,
-            stm32f4xx_hal::dma::config::DmaConfig::default()
-                .memory_increment(true)
-                .transfer_complete_interrupt(true),
-        );
-        let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
-            tx_stream,
-            tx,
-            tx_buffer_1,
-            Some(3),
-            None,
-            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
-        );
-
-        // start
-        self.cs.set_low();
-        // starting rx_transfer before tx_transfer seems more robust
-        // (works with even large delay between the two calls)
-        rx_transfer.start(|_| {});
-        tx_transfer.start(|_| {});
-
-        Icm42688pDmaContext {
-            tx_transfer,
-            rx_transfer,
-            rx_buffer: Some(rx_buffer_2),
-            tx_buffer: Some(tx_buffer_2),
-            cs: self.cs,
-        }
+    pub(crate) fn release(self) -> (SPIDEV, ErasedPin<Output>) {
+        (self.spi, self.cs)
     }
 }
 

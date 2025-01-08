@@ -39,6 +39,7 @@ mod app {
     use crate::crsf::crsf_parser;
     use crate::crsf::usart1_irq;
     use crate::crsf::RcState;
+    use crate::icm42688p::Icm42688pDmaContext;
     use crate::imu::imu_rx_irq;
     use crate::imu::{imu_handler, AhrsState};
     use crate::pwm_output::pwm_output_task;
@@ -171,16 +172,52 @@ mod app {
         cs.set_high();
         let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs.into());
         icm42688p.init(&mut delay);
+        let (spi1, mut cs) = icm42688p.release();
 
-        // -----------------------------------------------------------------------------------------
-        let icm42688p_dma_context = icm42688p.start_dma(
-            dma2.3,
-            dma2.0,
-            cx.local.TX_BUFFER_1,
-            cx.local.RX_BUFFER_1,
-            cx.local.TX_BUFFER_2,
-            cx.local.RX_BUFFER_2,
+        let tx_buffer_1 = cx.local.TX_BUFFER_1;
+        let tx_buffer_2 = cx.local.TX_BUFFER_2;
+        let rx_buffer_1 = cx.local.RX_BUFFER_1;
+        let rx_buffer_2 = cx.local.RX_BUFFER_2;
+        let tx_stream = dma2.3;
+        let rx_stream = dma2.0;
+
+        tx_buffer_1[0] = 0x2E | 0x80;
+        tx_buffer_2[0] = 0x2E | 0x80;
+
+        let (tx, rx) = spi1.use_dma().txrx();
+        let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
+            rx_stream,
+            rx,
+            rx_buffer_1,
+            Some(3),
+            None,
+            stm32f4xx_hal::dma::config::DmaConfig::default()
+                .memory_increment(true)
+                .transfer_complete_interrupt(true),
         );
+        let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
+            tx_stream,
+            tx,
+            tx_buffer_1,
+            Some(3),
+            None,
+            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
+        );
+
+        // start
+        cs.set_low();
+        // starting rx_transfer before tx_transfer seems more robust
+        // (works with even large delay between the two calls)
+        rx_transfer.start(|_| {});
+        tx_transfer.start(|_| {});
+
+        let icm42688p_dma_context = Icm42688pDmaContext {
+            tx_transfer,
+            rx_transfer,
+            rx_buffer: Some(rx_buffer_2),
+            tx_buffer: Some(tx_buffer_2),
+            cs,
+        };
 
         // -----------------------------------------------------------------------------------------
         // Configure timers for PWM output
