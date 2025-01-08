@@ -34,7 +34,7 @@ box_pool!(IMUDATAPOOL: [u8; 16]);
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::blink::blink;
-    use crate::boards::board::{self, Board, PwmOutputs};
+    use crate::boards::board::{self, Board};
     use crate::control::control_task;
     use crate::crsf::crsf_parser;
     use crate::crsf::usart1_irq;
@@ -65,12 +65,13 @@ mod app {
     #[local]
     struct Local {
         dwt: cortex_m::peripheral::DWT,
-        icm42688p_dma_context: crate::icm42688p::Icm42688pDmaContext,
+        icm42688p_dma_context:
+            Icm42688pDmaContext<board::ImuDmaTxTransfer, board::ImuDmaRxTransfer, board::ImuCsPin>,
         prev_fifo_count: u16,
         imu_data_sender: rtic_sync::channel::Sender<'static, Box<IMUDATAPOOL>, 1>,
         crsf_serial: board::CrsfSerial,
         crsf_data_sender: rtic_sync::channel::Sender<'static, u8, 64>,
-        pwm_outputs: PwmOutputs,
+        pwm_outputs: board::PwmOutputs,
     }
 
     #[init(local = [
@@ -170,54 +171,20 @@ mod app {
 
         let mut cs = board.spi1.cs.into_push_pull_output();
         cs.set_high();
-        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs.into());
+        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs);
         icm42688p.init(&mut delay);
-        let (spi1, mut cs) = icm42688p.release();
+        let (spi1, cs) = icm42688p.release();
 
-        let tx_buffer_1 = cx.local.TX_BUFFER_1;
-        let tx_buffer_2 = cx.local.TX_BUFFER_2;
-        let rx_buffer_1 = cx.local.RX_BUFFER_1;
-        let rx_buffer_2 = cx.local.RX_BUFFER_2;
-        let tx_stream = dma2.3;
-        let rx_stream = dma2.0;
-
-        tx_buffer_1[0] = 0x2E | 0x80;
-        tx_buffer_2[0] = 0x2E | 0x80;
-
-        let (tx, rx) = spi1.use_dma().txrx();
-        let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
-            rx_stream,
-            rx,
-            rx_buffer_1,
-            Some(3),
-            None,
-            stm32f4xx_hal::dma::config::DmaConfig::default()
-                .memory_increment(true)
-                .transfer_complete_interrupt(true),
-        );
-        let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
-            tx_stream,
-            tx,
-            tx_buffer_1,
-            Some(3),
-            None,
-            stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
-        );
-
-        // start
-        cs.set_low();
-        // starting rx_transfer before tx_transfer seems more robust
-        // (works with even large delay between the two calls)
-        rx_transfer.start(|_| {});
-        tx_transfer.start(|_| {});
-
-        let icm42688p_dma_context = Icm42688pDmaContext {
-            tx_transfer,
-            rx_transfer,
-            rx_buffer: Some(rx_buffer_2),
-            tx_buffer: Some(tx_buffer_2),
+        let icm42688p_dma_context = crate::icm42688p::start_dma(
+            cx.local.TX_BUFFER_1,
+            cx.local.RX_BUFFER_1,
+            cx.local.TX_BUFFER_2,
+            cx.local.RX_BUFFER_2,
+            spi1,
+            dma2.3,
+            dma2.0,
             cs,
-        };
+        );
 
         // -----------------------------------------------------------------------------------------
         // Configure timers for PWM output

@@ -56,6 +56,25 @@ pub struct UsbPins<DP, DM> {
 }
 
 pub type CrsfSerial = stm32f4xx_hal::serial::Serial<stm32f4xx_hal::pac::USART1, u8>;
+pub type ImuSpiDev = stm32f4xx_hal::spi::Spi<stm32f4xx_hal::pac::SPI1>;
+pub type ImuCsPin = gpio::gpioa::PA4<gpio::Output<gpio::PushPull>>;
+pub type ImuDmaTxStream = stm32f4xx_hal::dma::Stream3<DMA2>;
+pub type ImuDmaRxStream = stm32f4xx_hal::dma::Stream0<DMA2>;
+pub type ImuDmaTxTransfer = stm32f4xx_hal::dma::Transfer<
+    ImuDmaTxStream,
+    3,
+    stm32f4xx_hal::spi::Tx<SPI1>,
+    stm32f4xx_hal::dma::MemoryToPeripheral,
+    &'static mut [u8; 129],
+>;
+
+pub type ImuDmaRxTransfer = stm32f4xx_hal::dma::Transfer<
+    ImuDmaRxStream,
+    3,
+    stm32f4xx_hal::spi::Rx<SPI1>,
+    stm32f4xx_hal::dma::PeripheralToMemory,
+    &'static mut [u8; 129],
+>;
 
 // For RTIC
 #[doc(hidden)]
