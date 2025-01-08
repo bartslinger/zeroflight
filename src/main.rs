@@ -4,13 +4,13 @@
 #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
-mod behavior;
 mod boards;
 mod common;
 mod drivers;
 mod hw_tasks;
 mod misc;
 mod sw_tasks;
+mod vehicle;
 
 use defmt_rtt as _;
 use heapless::box_pool;

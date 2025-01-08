@@ -1,8 +1,3 @@
-// pub struct ControllerInput {
-//     pitch_angle_rad: f32,
-//     roll_angle_rad: f32,
-// }
-
 use crate::common::{AhrsState, PI};
 pub struct ControllerOutput {
     pub roll: f32,
@@ -10,14 +5,14 @@ pub struct ControllerOutput {
 }
 
 #[derive(Copy, Clone)]
-pub struct Controller {
+pub struct AttitudeController {
     roll_integral: f32,
     pitch_integral: f32,
 }
 
-impl Controller {
+impl AttitudeController {
     pub fn new() -> Self {
-        Controller {
+        AttitudeController {
             roll_integral: 0.0,
             pitch_integral: 0.0,
         }
