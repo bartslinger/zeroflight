@@ -38,8 +38,8 @@ pub(crate) fn ticks_to_us(ticks: u16) -> u16 {
     ((ticks as i16 - 992) * 5 / 8 + 1500) as u16
 }
 
-pub(crate) async fn crsf_parser(
-    cx: crate::app::crsf_parser::Context<'_>,
+pub(crate) async fn crsf_parser_task(
+    cx: crate::app::crsf_parser_task::Context<'_>,
     mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
     mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
 ) {

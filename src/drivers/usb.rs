@@ -1,14 +1,4 @@
-pub(crate) fn usb_tx(cx: crate::app::usb_tx::Context<'_>) {
-    use rtic::mutex_prelude::*;
-    let mut usb_dev = cx.shared.usb_dev;
-    let mut serial = cx.shared.serial;
-
-    (&mut usb_dev, &mut serial).lock(|usb_dev, serial| {
-        usb_poll(usb_dev, serial);
-    });
-}
-
-fn usb_poll<B: usb_device::bus::UsbBus>(
+pub(crate) fn usb_poll<B: usb_device::bus::UsbBus>(
     usb_dev: &mut usb_device::device::UsbDevice<'static, B>,
     serial: &mut usbd_serial::SerialPort<'static, B>,
 ) {

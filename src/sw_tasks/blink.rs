@@ -1,7 +1,7 @@
 use crate::app::Mono;
 use rtic_monotonics::systick::prelude::*;
 
-pub(crate) async fn blink(_cx: crate::app::blink::Context<'_>) {
+pub(crate) async fn blink_task(_cx: crate::app::blink_task::Context<'_>) {
     defmt::info!("blink task");
     let mut instant = Mono::now();
     loop {

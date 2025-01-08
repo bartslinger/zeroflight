@@ -24,13 +24,13 @@ mod app {
     use crate::boards::board::{self, Board};
     use crate::common::{AhrsState, OutputCommand, RcState};
     use crate::drivers::icm42688p::Icm42688pDmaContext;
-    use crate::drivers::usb::usb_tx;
+    use crate::hw_tasks::interrupt_handlers::dma2_stream0_irq;
+    use crate::hw_tasks::interrupt_handlers::otg_fs_irq;
     use crate::hw_tasks::interrupt_handlers::usart1_irq;
-    use crate::misc::blink::blink;
+    use crate::sw_tasks::ahrs::ahrs_task;
+    use crate::sw_tasks::blink::blink_task;
     use crate::sw_tasks::control::control_task;
-    use crate::sw_tasks::crsf::crsf_parser;
-    use crate::sw_tasks::imu::imu_handler;
-    use crate::sw_tasks::imu::imu_rx_irq;
+    use crate::sw_tasks::crsf::crsf_parser_task;
     use crate::sw_tasks::pwm_output::pwm_output_task;
     use crate::IMUDATAPOOL;
     use core::sync::atomic::AtomicBool;
@@ -215,9 +215,10 @@ mod app {
         .unwrap()
         .build();
 
-        // Spawn sw_tasks
-        imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
-        crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
+        // Spawn software tasks
+        blink_task::spawn().ok();
+        ahrs_task::spawn(imu_data_receiver, ahrs_state_sender).ok();
+        crsf_parser_task::spawn(crsf_data_receiver, rc_state_sender).ok();
         control_task::spawn(ahrs_state_receiver, rc_state_receiver, pwm_output_sender).ok();
         pwm_output_task::spawn(pwm_output_receiver).ok();
 
@@ -245,7 +246,6 @@ mod app {
     #[idle(local = [dwt])]
     fn idle(cx: idle::Context) -> ! {
         let dwt = cx.local.dwt;
-        blink::spawn().ok();
 
         let mut prev_cyc_cnt = dwt.cyccnt.read();
         let mut counter = 0;
@@ -278,11 +278,7 @@ mod app {
         #[task(priority = 10, local = [pwm_outputs])]
         async fn pwm_output_task(
             cx: pwm_output_task::Context,
-            mut pwm_output_receiver: rtic_sync::channel::Receiver<
-                'static,
-                crate::common::OutputCommand,
-                1,
-            >,
+            mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, OutputCommand, 1>,
         );
 
         #[task(
@@ -291,7 +287,7 @@ mod app {
             local = [icm42688p_dma_context, prev_fifo_count, imu_data_sender],
             priority = 5
         )]
-        fn imu_rx_irq(cx: imu_rx_irq::Context);
+        fn dma2_stream0_irq(cx: dma2_stream0_irq::Context);
 
         #[task(
             binds = USART1,
@@ -302,8 +298,8 @@ mod app {
         fn usart1_irq(cx: usart1_irq::Context);
 
         #[task(priority = 3, shared = [&flags])]
-        async fn crsf_parser(
-            cx: crsf_parser::Context,
+        async fn crsf_parser_task(
+            cx: crsf_parser_task::Context,
             mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
             mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
         );
@@ -313,25 +309,21 @@ mod app {
             _cx: control_task::Context,
             mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
             mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-            mut pwm_output_sender: rtic_sync::channel::Sender<
-                'static,
-                crate::common::OutputCommand,
-                1,
-            >,
+            mut pwm_output_sender: rtic_sync::channel::Sender<'static, OutputCommand, 1>,
         );
 
         #[task(priority = 2, shared = [&flags])]
-        async fn imu_handler(
-            _cx: imu_handler::Context,
+        async fn ahrs_task(
+            _cx: ahrs_task::Context,
             mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
             mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
         );
 
         #[task(binds = OTG_FS, shared = [usb_dev, serial], priority = 1)]
-        fn usb_tx(cx: usb_tx::Context);
+        fn otg_fs_irq(cx: otg_fs_irq::Context);
 
         #[task(priority = 1)]
-        async fn blink(cx: blink::Context);
+        async fn blink_task(cx: blink_task::Context);
 
     }
 }
