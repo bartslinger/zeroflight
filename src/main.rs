@@ -8,6 +8,7 @@ mod behavior;
 mod boards;
 mod common;
 mod drivers;
+mod hw_tasks;
 mod misc;
 mod sw_tasks;
 
@@ -15,30 +16,21 @@ use defmt_rtt as _;
 use heapless::box_pool;
 use panic_halt as _;
 
-struct OutputCommand {
-    armed: bool,
-    roll: u16,
-    pitch: u16,
-    throttle: u16,
-    #[allow(unused)]
-    yaw: u16,
-}
-
 // Declare a pool
 box_pool!(IMUDATAPOOL: [u8; 16]);
 
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::boards::board::{self, Board};
-    use crate::drivers::crsf::crsf_parser;
-    use crate::drivers::crsf::usart1_irq;
-    use crate::drivers::crsf::RcState;
+    use crate::common::{AhrsState, OutputCommand, RcState};
     use crate::drivers::icm42688p::Icm42688pDmaContext;
     use crate::drivers::usb::usb_tx;
+    use crate::hw_tasks::interrupt_handlers::usart1_irq;
     use crate::misc::blink::blink;
     use crate::sw_tasks::control::control_task;
+    use crate::sw_tasks::crsf::crsf_parser;
+    use crate::sw_tasks::imu::imu_handler;
     use crate::sw_tasks::imu::imu_rx_irq;
-    use crate::sw_tasks::imu::{imu_handler, AhrsState};
     use crate::sw_tasks::pwm_output::pwm_output_task;
     use crate::IMUDATAPOOL;
     use core::sync::atomic::AtomicBool;
@@ -93,8 +85,7 @@ mod app {
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!(Box<IMUDATAPOOL>, 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
-        let (pwm_output_sender, pwm_output_receiver) =
-            rtic_sync::make_channel!(crate::OutputCommand, 1);
+        let (pwm_output_sender, pwm_output_receiver) = rtic_sync::make_channel!(OutputCommand, 1);
         let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
 
         let mut delay = cx.core.SYST.delay(&board.clocks);
@@ -287,7 +278,11 @@ mod app {
         #[task(priority = 10, local = [pwm_outputs])]
         async fn pwm_output_task(
             cx: pwm_output_task::Context,
-            mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, crate::OutputCommand, 1>,
+            mut pwm_output_receiver: rtic_sync::channel::Receiver<
+                'static,
+                crate::common::OutputCommand,
+                1,
+            >,
         );
 
         #[task(
@@ -318,7 +313,11 @@ mod app {
             _cx: control_task::Context,
             mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
             mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-            mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
+            mut pwm_output_sender: rtic_sync::channel::Sender<
+                'static,
+                crate::common::OutputCommand,
+                1,
+            >,
         );
 
         #[task(priority = 2, shared = [&flags])]

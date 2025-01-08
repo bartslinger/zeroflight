@@ -1,13 +1,6 @@
-use crate::common::PI;
+use crate::common::{AhrsState, PI};
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
-
-#[derive(Copy, Clone)]
-pub(crate) struct AhrsState {
-    pub(crate) angles: dcmimu::EulerAngles,
-    pub(crate) rates: (f32, f32, f32),
-    pub(crate) _acceleration: (f32, f32, f32),
-}
 
 pub(crate) async fn imu_handler(
     cx: crate::app::imu_handler::Context<'_>,

@@ -1,17 +1,6 @@
 #![allow(dead_code)]
+use crate::common::RcState;
 use modular_bitfield::prelude::*;
-use stm32f4xx_hal::nb;
-
-#[derive(Clone, Copy)]
-pub struct RcState {
-    pub armed: bool,
-    pub roll: u16,
-    pub pitch: u16,
-    pub throttle: u16,
-    pub yaw: u16,
-    pub mode: u16,
-    pub pitch_offset: u16,
-}
 
 #[bitfield]
 pub(crate) struct Channels {
@@ -87,16 +76,16 @@ pub(crate) async fn crsf_parser(
             continue;
         }
 
-        let channels = crate::drivers::crsf::Channels::from_bytes(channel_bytes);
-        let roll = crate::drivers::crsf::ticks_to_us(channels.channel_01());
-        let pitch = crate::drivers::crsf::ticks_to_us(channels.channel_02());
-        let throttle = crate::drivers::crsf::ticks_to_us(channels.channel_03());
-        let yaw = crate::drivers::crsf::ticks_to_us(channels.channel_04());
-        let armed_channel = crate::drivers::crsf::ticks_to_us(channels.channel_05());
-        let mode = crate::drivers::crsf::ticks_to_us(channels.channel_06());
+        let channels = Channels::from_bytes(channel_bytes);
+        let roll = ticks_to_us(channels.channel_01());
+        let pitch = ticks_to_us(channels.channel_02());
+        let throttle = ticks_to_us(channels.channel_03());
+        let yaw = ticks_to_us(channels.channel_04());
+        let armed_channel = ticks_to_us(channels.channel_05());
+        let mode = ticks_to_us(channels.channel_06());
         // ...
-        let reset_channel = crate::drivers::crsf::ticks_to_us(channels.channel_09());
-        let pitch_offset = crate::drivers::crsf::ticks_to_us(channels.channel_10());
+        let reset_channel = ticks_to_us(channels.channel_09());
+        let pitch_offset = ticks_to_us(channels.channel_10());
 
         if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
             armed = true;
@@ -123,26 +112,5 @@ pub(crate) async fn crsf_parser(
         if let Err(_) = tx.try_send(rc_in) {
             // defmt::error!("error publishing rc state");
         }
-    }
-}
-
-pub(crate) fn usart1_irq(cx: crate::app::usart1_irq::Context<'_>) {
-    use stm32f4xx_hal::prelude::*;
-    let serial = cx.local.crsf_serial;
-    if serial.is_rx_not_empty() {
-        let byte = match serial.read() {
-            Ok(v) => v,
-            Err(nb::Error::Other(e)) => {
-                defmt::info!("Error in receiving usart1 byte: {}", e as u32);
-                return;
-            }
-            Err(nb::Error::WouldBlock) => {
-                defmt::info!("Error in receiving usart1 byte: would block");
-                return;
-            }
-        };
-        if let Err(_e) = cx.local.crsf_data_sender.try_send(byte) {
-            defmt::error!("send error from usart1 interrupt");
-        };
     }
 }

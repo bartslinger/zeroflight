@@ -3,9 +3,7 @@
 //     roll_angle_rad: f32,
 // }
 
-use crate::sw_tasks::imu::AhrsState;
-
-use crate::common::PI;
+use crate::common::{AhrsState, PI};
 pub struct ControllerOutput {
     pub roll: f32,
     pub pitch: f32,

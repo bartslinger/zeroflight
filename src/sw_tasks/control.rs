@@ -1,29 +1,20 @@
 use crate::behavior::controller::{Controller, ControllerOutput};
-use crate::drivers::crsf::RcState;
-use crate::sw_tasks::imu::AhrsState;
-use crate::OutputCommand;
-use core::sync::atomic::Ordering::SeqCst;
-
+use crate::behavior::modes::Mode;
 use crate::common::PI;
-
-enum FlightMode {
-    Stabilized,
-    Acro,
-    Manual,
-    Failsafe,
-}
+use crate::common::{AhrsState, OutputCommand, RcState};
+use core::sync::atomic::Ordering::SeqCst;
 
 pub(crate) async fn control_task(
     cx: crate::app::control_task::Context<'_>,
     mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-    mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
+    mut pwm_output_sender: rtic_sync::channel::Sender<'static, OutputCommand, 1>,
 ) {
     use crate::app::Mono;
     use futures::{select_biased, FutureExt};
     use rtic_monotonics::Monotonic;
 
-    let mut flight_mode = FlightMode::Stabilized;
+    let mut flight_mode = Mode::Stabilized;
 
     let mut rc_timestamp = Mono::now();
     let mut rc_state = RcState {
@@ -73,12 +64,12 @@ pub(crate) async fn control_task(
                 rc_state = new_rc_state;
                 rc_timestamp = Mono::now();
                 if new_rc_state.mode < 1400 {
-                    flight_mode = FlightMode::Stabilized;
+                    flight_mode = Mode::Stabilized;
                 } else if new_rc_state.mode >= 1400 && new_rc_state.mode < 1600 {
-                    flight_mode = FlightMode::Acro;
+                    flight_mode = Mode::Acro;
                 } else {
                     // manual mode
-                    flight_mode = FlightMode::Manual;
+                    flight_mode = Mode::Manual;
                 }
                 // Might want to switch to manual mode if AHRS update times out (without throttle?)
             }
@@ -89,7 +80,7 @@ pub(crate) async fn control_task(
 
                 if let Some(dt) = Mono::now().checked_duration_since(rc_timestamp) {
                     if rc_state.armed && dt.to_millis() > 500 {
-                        flight_mode = FlightMode::Failsafe;
+                        flight_mode = Mode::Failsafe;
                     }
                 }
             }
@@ -122,7 +113,7 @@ struct OutputCalculationState {
 async fn calculate_output(
     ahrs_state: &AhrsState,
     rc_state: &RcState,
-    flight_mode: &FlightMode,
+    flight_mode: &Mode,
     mut state: OutputCalculationState,
 ) -> (OutputCommand, OutputCalculationState) {
     // This is called at least every AHRS update.
@@ -136,14 +127,14 @@ async fn calculate_output(
     // This function is not yet triggered by flight mode changes in itself, unless caused by rc_state
 
     let output_command = match flight_mode {
-        FlightMode::Manual => OutputCommand {
+        Mode::Manual => OutputCommand {
             armed: rc_state.armed,
             roll: rc_state.roll,
             pitch: rc_state.pitch,
             throttle: rc_state.throttle,
             yaw: rc_state.yaw,
         },
-        FlightMode::Stabilized => {
+        Mode::Stabilized => {
             let pitch_offset = if rc_state.pitch_offset > 1500 {
                 -(rc_state.pitch_offset as i16 - 1500)
             } else {
@@ -167,7 +158,7 @@ async fn calculate_output(
                 yaw: rc_state.yaw,
             }
         }
-        FlightMode::Acro => {
+        Mode::Acro => {
             // 180deg/s roll, 90 deg/s pitch
             let roll_rate_setpoint =
                 ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 180.0 * PI / 180.0;
@@ -188,7 +179,7 @@ async fn calculate_output(
                 yaw: rc_state.yaw,
             }
         }
-        FlightMode::Failsafe => {
+        Mode::Failsafe => {
             let ControllerOutput { roll, pitch } =
                 state.controller.update(ahrs_state, 0.0, 0.0, true);
             OutputCommand {
