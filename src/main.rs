@@ -22,7 +22,7 @@ box_pool!(IMUDATAPOOL: [u8; 16]);
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::boards::board::{self, Board};
-    use crate::common::{AhrsState, OutputCommand, RcState};
+    use crate::common::{ActuatorCommands, AhrsState, RcState};
     use crate::drivers::icm42688p::Icm42688pDmaContext;
     use crate::hw_tasks::interrupt_handlers::dma2_stream0_irq;
     use crate::hw_tasks::interrupt_handlers::otg_fs_irq;
@@ -85,7 +85,8 @@ mod app {
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!(Box<IMUDATAPOOL>, 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
-        let (pwm_output_sender, pwm_output_receiver) = rtic_sync::make_channel!(OutputCommand, 1);
+        let (pwm_output_sender, pwm_output_receiver) =
+            rtic_sync::make_channel!(ActuatorCommands, 1);
         let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
 
         let mut delay = cx.core.SYST.delay(&board.clocks);
@@ -278,7 +279,7 @@ mod app {
         #[task(priority = 10, local = [pwm_outputs])]
         async fn pwm_output_task(
             cx: pwm_output_task::Context,
-            mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, OutputCommand, 1>,
+            mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, ActuatorCommands, 1>,
         );
 
         #[task(
@@ -309,7 +310,7 @@ mod app {
             _cx: control_task::Context,
             mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
             mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-            mut pwm_output_sender: rtic_sync::channel::Sender<'static, OutputCommand, 1>,
+            mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorCommands, 1>,
         );
 
         #[task(priority = 2, shared = [&flags])]

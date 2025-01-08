@@ -1,6 +1,7 @@
-use crate::common::{AhrsState, OutputCommand, RcState};
+use crate::common::{ActuatorCommands, AhrsState, RcState};
 use crate::vehicle::attitude_control::AttitudeController;
 use crate::vehicle::control_logic::OutputCalculationState;
+use crate::vehicle::mixing::output_mixing;
 use crate::vehicle::modes::{update_mode, Mode};
 use core::sync::atomic::Ordering::SeqCst;
 
@@ -8,7 +9,7 @@ pub(crate) async fn control_task(
     cx: crate::app::control_task::Context<'_>,
     mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-    mut pwm_output_sender: rtic_sync::channel::Sender<'static, OutputCommand, 1>,
+    mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorCommands, 1>,
 ) {
     use crate::app::Mono;
     use futures::{select_biased, FutureExt};
@@ -91,7 +92,10 @@ pub(crate) async fn control_task(
             previous_output_calculation_state,
         )
         .await;
-        pwm_output_sender.try_send(output_command).ok();
+
+        let actuator_commands = output_mixing(&output_command);
+
+        pwm_output_sender.try_send(actuator_commands).ok();
 
         // save the state
         temporary_output_calculation_state = output_state;

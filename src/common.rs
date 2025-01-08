@@ -9,6 +9,15 @@ pub struct OutputCommand {
     pub yaw: u16,
 }
 
+pub struct ActuatorCommands {
+    pub s1: u16,
+    pub s2: u16,
+    pub s3: u16,
+    pub s4: u16,
+    pub s5: u16,
+    pub s6: u16,
+}
+
 #[derive(Clone, Copy)]
 pub struct RcState {
     pub armed: bool,
