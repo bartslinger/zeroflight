@@ -87,16 +87,16 @@ pub(crate) async fn crsf_parser(
             continue;
         }
 
-        let channels = crate::crsf::Channels::from_bytes(channel_bytes);
-        let roll = crate::crsf::ticks_to_us(channels.channel_01());
-        let pitch = crate::crsf::ticks_to_us(channels.channel_02());
-        let throttle = crate::crsf::ticks_to_us(channels.channel_03());
-        let yaw = crate::crsf::ticks_to_us(channels.channel_04());
-        let armed_channel = crate::crsf::ticks_to_us(channels.channel_05());
-        let mode = crate::crsf::ticks_to_us(channels.channel_06());
+        let channels = crate::drivers::crsf::Channels::from_bytes(channel_bytes);
+        let roll = crate::drivers::crsf::ticks_to_us(channels.channel_01());
+        let pitch = crate::drivers::crsf::ticks_to_us(channels.channel_02());
+        let throttle = crate::drivers::crsf::ticks_to_us(channels.channel_03());
+        let yaw = crate::drivers::crsf::ticks_to_us(channels.channel_04());
+        let armed_channel = crate::drivers::crsf::ticks_to_us(channels.channel_05());
+        let mode = crate::drivers::crsf::ticks_to_us(channels.channel_06());
         // ...
-        let reset_channel = crate::crsf::ticks_to_us(channels.channel_09());
-        let pitch_offset = crate::crsf::ticks_to_us(channels.channel_10());
+        let reset_channel = crate::drivers::crsf::ticks_to_us(channels.channel_09());
+        let pitch_offset = crate::drivers::crsf::ticks_to_us(channels.channel_10());
 
         if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
             armed = true;

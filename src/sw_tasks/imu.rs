@@ -1,7 +1,6 @@
+use crate::common::PI;
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
-
-const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 #[derive(Copy, Clone)]
 pub(crate) struct AhrsState {

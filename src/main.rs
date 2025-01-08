@@ -4,16 +4,12 @@
 #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
-mod blink;
-mod control;
-mod controller;
-mod crsf;
-mod icm42688p;
-mod imu;
-mod pwm_output;
-mod usb;
-
+mod behavior;
 mod boards;
+mod common;
+mod drivers;
+mod misc;
+mod sw_tasks;
 
 use defmt_rtt as _;
 use heapless::box_pool;
@@ -33,17 +29,17 @@ box_pool!(IMUDATAPOOL: [u8; 16]);
 
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
-    use crate::blink::blink;
     use crate::boards::board::{self, Board};
-    use crate::control::control_task;
-    use crate::crsf::crsf_parser;
-    use crate::crsf::usart1_irq;
-    use crate::crsf::RcState;
-    use crate::icm42688p::Icm42688pDmaContext;
-    use crate::imu::imu_rx_irq;
-    use crate::imu::{imu_handler, AhrsState};
-    use crate::pwm_output::pwm_output_task;
-    use crate::usb::usb_tx;
+    use crate::drivers::crsf::crsf_parser;
+    use crate::drivers::crsf::usart1_irq;
+    use crate::drivers::crsf::RcState;
+    use crate::drivers::icm42688p::Icm42688pDmaContext;
+    use crate::drivers::usb::usb_tx;
+    use crate::misc::blink::blink;
+    use crate::sw_tasks::control::control_task;
+    use crate::sw_tasks::imu::imu_rx_irq;
+    use crate::sw_tasks::imu::{imu_handler, AhrsState};
+    use crate::sw_tasks::pwm_output::pwm_output_task;
     use crate::IMUDATAPOOL;
     use core::sync::atomic::AtomicBool;
     use heapless::pool::boxed::{Box, BoxBlock};
@@ -120,10 +116,7 @@ mod app {
 
         let mut i2c1 = stm32f4xx_hal::i2c::I2c::new(
             board.I2C1,
-            (
-                board.i2c1.scl.into_open_drain_output(),
-                board.i2c1.sda.into_open_drain_output(),
-            ),
+            (board.i2c1.scl, board.i2c1.sda),
             stm32f4xx_hal::i2c::Mode::from(400.kHz()),
             &board.clocks,
         );
@@ -171,11 +164,11 @@ mod app {
 
         let mut cs = board.spi1.cs.into_push_pull_output();
         cs.set_high();
-        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs);
+        let mut icm42688p = crate::drivers::icm42688p::Icm42688p::new(spi1, cs);
         icm42688p.init(&mut delay);
         let (spi1, cs) = icm42688p.release();
 
-        let icm42688p_dma_context = crate::icm42688p::start_dma(
+        let icm42688p_dma_context = crate::drivers::icm42688p::start_dma(
             cx.local.TX_BUFFER_1,
             cx.local.RX_BUFFER_1,
             cx.local.TX_BUFFER_2,
@@ -185,18 +178,6 @@ mod app {
             dma2.0,
             cs,
         );
-
-        // -----------------------------------------------------------------------------------------
-        // Configure timers for PWM output
-
-        // This is the configuration in INAV:
-        //     DEF_TIM(TIM4,   CH2, PB7,  TIM_USE_OUTPUT_AUTO,   1, 0), // S1 D(1,3,2)
-        //     DEF_TIM(TIM4,   CH1, PB6,  TIM_USE_OUTPUT_AUTO,   1, 0), // S2 D(1,0,2)
-        //
-        //     DEF_TIM(TIM3,   CH3, PB0,  TIM_USE_OUTPUT_AUTO,   1, 0), // S3 D(1,7,5)
-        //     DEF_TIM(TIM3,   CH4, PB1,  TIM_USE_OUTPUT_AUTO,   1, 0), // S4 D(1,2,5)
-        //     DEF_TIM(TIM8,   CH3, PC8,  TIM_USE_OUTPUT_AUTO,   1, 0), // S5 D(2,4,7)
-        //     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
 
         // -----------------------------------------------------------------------------------------
         // Serial ELRS receiver
@@ -243,7 +224,7 @@ mod app {
         .unwrap()
         .build();
 
-        // Spawn tasks
+        // Spawn sw_tasks
         imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
         crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
         control_task::spawn(ahrs_state_receiver, rc_state_receiver, pwm_output_sender).ok();

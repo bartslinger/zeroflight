@@ -1,7 +1,7 @@
 use crate::crsf::RcState;
 use crate::imu::AhrsState;
 
-const PI: f32 = 3.14159265358979323846264338327950288_f32;
+use crate::common::PI;
 
 pub(crate) struct TakeoffModeCommand {
     pub(crate) throttle: u16,

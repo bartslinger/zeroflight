@@ -1,10 +1,10 @@
-use crate::controller::{Controller, ControllerOutput};
-use crate::crsf::RcState;
-use crate::imu::AhrsState;
+use crate::behavior::controller::{Controller, ControllerOutput};
+use crate::drivers::crsf::RcState;
+use crate::sw_tasks::imu::AhrsState;
 use crate::OutputCommand;
 use core::sync::atomic::Ordering::SeqCst;
 
-const PI: f32 = 3.14159265358979323846264338327950288_f32;
+use crate::common::PI;
 
 enum FlightMode {
     Stabilized,
