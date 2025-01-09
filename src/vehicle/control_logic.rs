@@ -34,35 +34,32 @@ pub async fn calculate_output(
             yaw: rc_state.yaw,
         },
         Mode::Stabilized => {
-            let pitch_offset = if rc_state.pitch_offset > 1500 {
-                -(rc_state.pitch_offset as i16 - 1500)
+            let pitch_offset = if rc_state.pitch_offset > 0.0 {
+                -rc_state.pitch_offset
             } else {
-                0
+                0.0
             };
-            let roll_setpoint = ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 45.0 * PI / 180.0;
-            let pitch_setpoint =
-                ((rc_state.pitch as i16 + pitch_offset - 1500) as f32 / 500.0) * -30.0 * PI / 180.0;
-            let pitch_offset = 2.0 * PI / 180.0; // 2 degrees pitch up by default
+            let roll_setpoint = rc_state.roll * 45.0 * PI / 180.0;
+            let pitch_setpoint = (rc_state.pitch + pitch_offset) * -30.0 * PI / 180.0;
+            let pitch_level_setpoint = 2.0 * PI / 180.0; // 2 degrees pitch up by default
             let ControllerOutput { roll, pitch } = state.controller.update(
                 ahrs_state,
                 roll_setpoint,
-                pitch_offset + pitch_setpoint,
+                pitch_level_setpoint + pitch_setpoint,
                 rc_state.armed,
             );
             OutputCommand {
                 armed: rc_state.armed,
-                roll: ((roll * 500.0) as i16 + 1500) as u16,
-                pitch: ((pitch * 500.0) as i16 + 1500) as u16,
+                roll,
+                pitch,
                 throttle: rc_state.throttle,
                 yaw: rc_state.yaw,
             }
         }
         Mode::Acro => {
             // 180deg/s roll, 90 deg/s pitch
-            let roll_rate_setpoint =
-                ((rc_state.roll as i16 - 1500) as f32 / 500.0) * 180.0 * PI / 180.0;
-            let pitch_rate_setpoint =
-                ((rc_state.pitch as i16 - 1500) as f32 / 500.0) * -90.0 * PI / 180.0;
+            let roll_rate_setpoint = rc_state.roll * 180.0 * PI / 180.0;
+            let pitch_rate_setpoint = rc_state.pitch * -90.0 * PI / 180.0;
 
             let ControllerOutput { roll, pitch } = state.controller.stabilize_rates(
                 ahrs_state,
@@ -72,8 +69,8 @@ pub async fn calculate_output(
             );
             OutputCommand {
                 armed: rc_state.armed,
-                roll: ((roll * 500.0) as i16 + 1500) as u16,
-                pitch: ((pitch * 500.0) as i16 + 1500) as u16,
+                roll,
+                pitch,
                 throttle: rc_state.throttle,
                 yaw: rc_state.yaw,
             }
@@ -83,10 +80,10 @@ pub async fn calculate_output(
                 state.controller.update(ahrs_state, 0.0, 0.0, true);
             OutputCommand {
                 armed: false,
-                roll: ((roll * 500.0) as i16 + 1500) as u16,
-                pitch: ((pitch * 500.0) as i16 + 1500) as u16,
-                throttle: 900,
-                yaw: 1500,
+                roll,
+                pitch,
+                throttle: 0.0,
+                yaw: 0.0,
             }
         }
     };

@@ -20,12 +20,12 @@ pub(crate) async fn control_task(
     let mut rc_timestamp = Mono::now();
     let mut rc_state = RcState {
         armed: false,
-        roll: 1500,
-        pitch: 1500,
-        throttle: 900,
-        yaw: 1500,
-        mode: 1000,
-        pitch_offset: 1000,
+        roll: 0.0,
+        pitch: 0.0,
+        throttle: 0.0,
+        yaw: 0.0,
+        mode: 0.0,
+        pitch_offset: 0.0,
     };
 
     let mut ahrs_state = AhrsState {

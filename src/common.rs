@@ -2,11 +2,11 @@ pub const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 pub struct OutputCommand {
     pub armed: bool,
-    pub roll: u16,
-    pub pitch: u16,
-    pub throttle: u16,
+    pub roll: f32,
+    pub pitch: f32,
+    pub throttle: f32,
     #[allow(unused)]
-    pub yaw: u16,
+    pub yaw: f32,
 }
 
 pub struct ActuatorCommands {
@@ -21,12 +21,12 @@ pub struct ActuatorCommands {
 #[derive(Clone, Copy)]
 pub struct RcState {
     pub armed: bool,
-    pub roll: u16,
-    pub pitch: u16,
-    pub throttle: u16,
-    pub yaw: u16,
-    pub mode: u16,
-    pub pitch_offset: u16,
+    pub roll: f32,
+    pub pitch: f32,
+    pub throttle: f32,
+    pub yaw: f32,
+    pub mode: f32,
+    pub pitch_offset: f32,
 }
 
 #[derive(Copy, Clone)]

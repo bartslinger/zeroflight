@@ -77,28 +77,39 @@ pub(crate) async fn crsf_parser_task(
         }
 
         let channels = Channels::from_bytes(channel_bytes);
-        let roll = ticks_to_us(channels.channel_01());
-        let pitch = ticks_to_us(channels.channel_02());
-        let throttle = ticks_to_us(channels.channel_03());
-        let yaw = ticks_to_us(channels.channel_04());
-        let armed_channel = ticks_to_us(channels.channel_05());
-        let mode = ticks_to_us(channels.channel_06());
+        let roll_us = ticks_to_us(channels.channel_01());
+        let pitch_us = ticks_to_us(channels.channel_02());
+        let throttle_us = ticks_to_us(channels.channel_03());
+        let yaw_us = ticks_to_us(channels.channel_04());
+        let armed_channel_us = ticks_to_us(channels.channel_05());
+        let mode_us = ticks_to_us(channels.channel_06());
         // ...
         let reset_channel = ticks_to_us(channels.channel_09());
         let pitch_offset = ticks_to_us(channels.channel_10());
 
-        if previous_armed_channel_state <= 1500 && armed_channel > 1500 && throttle <= 1000 {
+        if previous_armed_channel_state <= 1500 && armed_channel_us > 1500 && throttle_us <= 1000 {
             armed = true;
         }
-        if armed_channel < 1500 {
+        if armed_channel_us < 1500 {
             armed = false;
         }
-        previous_armed_channel_state = armed_channel;
+        previous_armed_channel_state = armed_channel_us;
 
         cx.shared
             .flags
             .reset_ahrs
             .store(reset_channel > 1500, core::sync::atomic::Ordering::SeqCst);
+
+        let roll = ((roll_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+        let pitch = ((pitch_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+        let throttle = ((throttle_us as i16 - 1000) as f32 / 1000.0)
+            .max(0.0)
+            .min(1.0);
+        let yaw = ((yaw_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+        let mode = ((mode_us as i16 - 1000) as f32 / 1000.0).max(0.0).min(1.0);
+        let pitch_offset = ((pitch_offset as i16 - 1500) as f32 / 500.0)
+            .max(-1.0)
+            .min(1.0);
 
         let rc_in = RcState {
             armed,
