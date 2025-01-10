@@ -34,7 +34,7 @@ mod app {
     use heapless::pool::boxed::{Box, BoxBlock};
     use rtic_monotonics::systick::prelude::*;
 
-    systick_monotonic!(Mono, 1000);
+    systick_monotonic!(Mono, 1_000);
 
     #[shared]
     struct Shared {
@@ -226,33 +226,33 @@ mod app {
         )
     }
 
-    #[idle(local = [dwt])]
-    fn idle(cx: idle::Context) -> ! {
-        let dwt = cx.local.dwt;
-
-        let mut prev_cyc_cnt = dwt.cyccnt.read();
-        let mut counter = 0;
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
+        // let dwt = cx.local.dwt;
+        //
+        // let mut prev_cyc_cnt = dwt.cyccnt.read();
+        // let mut counter = 0;
         loop {
             if true {
                 cortex_m::asm::wfi();
             } else {
-                cortex_m::asm::nop();
-                counter += 1;
-                if counter % 100_000 == 0 {
-                    // defmt::info!("write tons of data in idle loop to check if this locks the FC");
-                    // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
-                    // it's fine when the chip is started without debugger
-                }
-                if counter >= 16_800_000 {
-                    let cyc_cnt = dwt.cyccnt.read();
-                    let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
-                    let idle_time = 16_800_000_f32 * 10.;
-                    let ratio = 100. * (idle_time / time_passed as f32);
-
-                    defmt::info!("Idle: {}", ratio);
-                    prev_cyc_cnt = cyc_cnt;
-                    counter = 0;
-                }
+                // cortex_m::asm::nop();
+                // counter += 1;
+                // if counter % 100_000 == 0 {
+                //     // defmt::info!("write tons of data in idle loop to check if this locks the FC");
+                //     // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
+                //     // it's fine when the chip is started without debugger
+                // }
+                // if counter >= 16_800_000 {
+                //     let cyc_cnt = dwt.cyccnt.read();
+                //     let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
+                //     let idle_time = 16_800_000_f32 * 10.;
+                //     let ratio = 100. * (idle_time / time_passed as f32);
+                //
+                //     defmt::info!("Idle: {}", ratio);
+                //     prev_cyc_cnt = cyc_cnt;
+                //     counter = 0;
+                // }
             }
         }
     }
@@ -287,7 +287,7 @@ mod app {
             mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
         );
 
-        #[task(priority = 2, shared = [])]
+        #[task(priority = 2, local = [dwt], shared = [])]
         async fn control_task(
             _cx: control_task::Context,
             mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,

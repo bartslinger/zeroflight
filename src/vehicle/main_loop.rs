@@ -83,6 +83,7 @@ pub fn main_loop(
         state.ahrs.reset();
     }
     // Update AHRS with IMU data
+    // TODO: This could take longer than 1ms, thereby messing up the loop timing
     let ahrs_state = state.ahrs.imu_update(imu_update, dt);
 
     // Run controller

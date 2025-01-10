@@ -4,11 +4,12 @@ use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
 
 pub(crate) async fn control_task(
-    _cx: crate::app::control_task::Context<'_>,
+    cx: crate::app::control_task::Context<'_>,
     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
     mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorPwmCommands, 1>,
 ) {
+    let dwt = cx.local.dwt;
     use futures::{select_biased, FutureExt};
 
     let mut rc_state = MaybeUpdatedValue::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -19,6 +20,12 @@ pub(crate) async fn control_task(
     });
 
     let mut main_loop_state = MainState::default();
+
+    let mut main_loop_counter: u32 = 0;
+    let mut previous_main_loop_tick = None;
+    let mut average_loop_delta: f32 = 1_000.0;
+    let mut min_loop_delta: u32 = u32::MAX;
+    let mut max_loop_delta: u32 = 0;
 
     defmt::info!("control task started");
     loop {
@@ -55,6 +62,30 @@ pub(crate) async fn control_task(
         }
 
         if let Some(imu_value) = imu_data.updated() {
+            // Calculate loop delta for debugging
+            let tick = dwt.cyccnt.read();
+            if let Some(previous_tick) = previous_main_loop_tick {
+                let delta = tick.wrapping_sub(previous_tick);
+                min_loop_delta = delta.min(min_loop_delta);
+                max_loop_delta = delta.max(max_loop_delta);
+                average_loop_delta = 0.99 * average_loop_delta + 0.01 * delta as f32;
+            }
+            if main_loop_counter % 1000 == 0 {
+                main_loop_counter = 0;
+                defmt::info!(
+                    "min: {} max: {} avg: {}",
+                    min_loop_delta / 168,
+                    max_loop_delta / 168,
+                    average_loop_delta / 168.0
+                );
+                min_loop_delta = u32::MAX;
+                max_loop_delta = 0;
+            }
+
+            previous_main_loop_tick = Some(tick);
+            main_loop_counter += 1;
+
+            // Run the main loop
             let output = main_loop(&mut main_loop_state, imu_value, &mut rc_state, 0.001);
             if let Err(_) = pwm_output_sender.try_send(output) {
                 defmt::error!("error sending pwm output");

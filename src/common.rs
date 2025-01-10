@@ -36,7 +36,7 @@ pub struct AhrsState {
 }
 
 pub struct TimestampedValue<T> {
-    pub timestamp: Instant<u32, 1, 1000>,
+    pub timestamp: Instant<u32, 1, 1_000>,
     value: T,
 }
 
@@ -48,7 +48,7 @@ impl<T> TimestampedValue<T> {
         }
     }
 
-    pub fn set(&mut self, value: T, timestamp: Instant<u32, 1, 1000>) {
+    pub fn set(&mut self, value: T, timestamp: Instant<u32, 1, 1_000>) {
         self.value = value;
         self.timestamp = timestamp;
     }
