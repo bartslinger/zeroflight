@@ -88,7 +88,7 @@ pub(crate) async fn control_task(
             } // TODO: Timeout? if no imu data, map rc directly to output?
         }
 
-        if let Some(imu_value) = imu_data.updated() {
+        if let Some(timestamped_imu_data) = imu_data.updated() {
             // Calculate loop delta for debugging
             let tick = dwt.cyccnt.read();
             if let Some(previous_tick) = previous_main_loop_tick {
@@ -122,7 +122,7 @@ pub(crate) async fn control_task(
             // Run the main loop
             let output = main_loop(
                 &mut main_loop_state,
-                imu_value,
+                timestamped_imu_data.value(),
                 &mut ahrs_state,
                 &mut rc_state,
                 0.001,

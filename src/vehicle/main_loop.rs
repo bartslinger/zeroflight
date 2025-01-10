@@ -1,12 +1,12 @@
+use super::attitude_control::{AttitudeController, ControllerOutput};
+use super::mixing::output_mixing;
+use super::modes::Mode;
+use super::radio::{radio_mapping, RcCommand, ThreePositionSwitch};
 use crate::app::Mono;
 use crate::common::{
     ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdatedValue, OutputCommand, RcState,
     TimestampedValue, PI,
 };
-use crate::vehicle::attitude_control::{AttitudeController, ControllerOutput};
-use crate::vehicle::mixing::output_mixing;
-use crate::vehicle::modes::Mode;
-use crate::vehicle::radio::{radio_mapping, RcCommand, ThreePositionSwitch};
 use rtic_monotonics::Monotonic;
 
 pub struct MainState {
@@ -49,7 +49,7 @@ impl Default for MainState {
 ///
 pub fn main_loop(
     state: &mut MainState,
-    imu_update: &TimestampedValue<ImuData>,
+    imu_data: &ImuData,
     ahrs_state: &mut MaybeUpdatedValue<AhrsState>,
     rc_state: &mut MaybeUpdatedValue<RcState>,
     dt: f32,
@@ -113,7 +113,7 @@ pub fn main_loop(
             let pitch_level_setpoint = 2.0 * PI / 180.0; // 2 degrees pitch up by default
             let ControllerOutput { roll, pitch } = state.attitude_controller.update(
                 ahrs_state,
-                imu_update.value(),
+                imu_data,
                 roll_setpoint,
                 pitch_level_setpoint + pitch_setpoint,
                 state.armed,
@@ -133,7 +133,7 @@ pub fn main_loop(
             let pitch_rate_setpoint = rc_command.pitch * -90.0 * PI / 180.0;
 
             let ControllerOutput { roll, pitch } = state.attitude_controller.stabilize_rates(
-                imu_update.value(),
+                imu_data,
                 roll_rate_setpoint,
                 pitch_rate_setpoint,
                 state.armed,
@@ -148,14 +148,9 @@ pub fn main_loop(
             }
         }
         Mode::Failsafe => {
-            let ControllerOutput { roll, pitch } = state.attitude_controller.update(
-                ahrs_state,
-                imu_update.value(),
-                0.0,
-                0.0,
-                true,
-                dt,
-            );
+            let ControllerOutput { roll, pitch } = state
+                .attitude_controller
+                .update(ahrs_state, imu_data, 0.0, 0.0, true, dt);
             OutputCommand {
                 armed: false,
                 roll,
