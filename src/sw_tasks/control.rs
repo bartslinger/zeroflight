@@ -1,13 +1,15 @@
-use crate::common::{ActuatorCommands, AhrsState, RcState};
+use crate::common::{ActuatorCommands, ImuData, RcState, Update, PI};
 use crate::vehicle::attitude_control::AttitudeController;
 use crate::vehicle::control_logic::OutputCalculationState;
-use crate::vehicle::mixing::output_mixing;
 use crate::vehicle::modes::{update_mode, Mode};
+use crate::vehicle::{main_loop, MainLoopState};
+use crate::IMUDATAPOOL;
 use core::sync::atomic::Ordering::SeqCst;
+use heapless::pool::boxed::Box;
 
 pub(crate) async fn control_task(
     cx: crate::app::control_task::Context<'_>,
-    mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
+    mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
     mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorCommands, 1>,
 ) {
@@ -18,7 +20,7 @@ pub(crate) async fn control_task(
     let mut mode = Mode::Stabilized;
 
     let mut rc_timestamp = Mono::now();
-    let mut rc_state = RcState {
+    let mut rc_state = Update::Unchanged(RcState {
         armed: false,
         roll: 0.0,
         pitch: 0.0,
@@ -26,78 +28,90 @@ pub(crate) async fn control_task(
         yaw: 0.0,
         mode: 0.0,
         pitch_offset: 0.0,
-    };
+    });
 
-    let mut ahrs_state = AhrsState {
-        angles: dcmimu::EulerAngles::default(),
+    let mut imu_data = Update::Unchanged(ImuData {
+        acceleration: (0.0, 0.0, 0.0),
         rates: (0.0, 0.0, 0.0),
-        _acceleration: (0.0, 0.0, 0.0),
-    };
+    });
 
     let controller = AttitudeController::new();
-    let mut previous_output_calculation_state = OutputCalculationState { controller };
-    let mut temporary_output_calculation_state = previous_output_calculation_state;
+
+    let mut main_loop_state = MainLoopState::default();
 
     defmt::info!("control task started");
     loop {
+        // Main reason for using this enum is because select_biased! doesn't work with code
+        // formatting
         enum ControlTaskEvent {
+            ImuData(Box<IMUDATAPOOL>),
             RcState(RcState),
-            AhrsState(AhrsState),
         }
 
         let event = select_biased! {
+            v = imu_data_receiver.recv().fuse() => {
+                match v {
+                    Ok(v) => ControlTaskEvent::ImuData(v),
+                    Err(_) => continue,
+                }
+            }
             v = rc_state_receiver.recv().fuse() => {
                 match v {
                     Ok(v) => ControlTaskEvent::RcState(v),
                     Err(_) => continue,
                 }
             }
-            v = ahrs_state_receiver.recv().fuse() => {
-                match v {
-                    Ok(v) => ControlTaskEvent::AhrsState(v),
-                    Err(_) => continue,
-                }
-            }
         };
 
         match event {
-            ControlTaskEvent::RcState(new_rc_state) => {
-                rc_state = new_rc_state;
-                rc_timestamp = Mono::now();
-                update_mode(&mut mode, &rc_state);
-                // Might want to switch to manual mode if AHRS update times out (without throttle?)
-            }
-            ControlTaskEvent::AhrsState(new_ahrs_state) => {
-                ahrs_state = new_ahrs_state;
-                // On AHRS sample, propagate the output state
-                previous_output_calculation_state = temporary_output_calculation_state;
+            ControlTaskEvent::ImuData(raw_imu_data) => {
+                let parsed_imu_data = parse_imu_data(raw_imu_data);
+                imu_data = Update::Updated(parsed_imu_data);
 
+                // TODO: move this failsafe to main_loop
                 if let Some(dt) = Mono::now().checked_duration_since(rc_timestamp) {
-                    if rc_state.armed && dt.to_millis() > 500 {
+                    if rc_state.value().armed && dt.to_millis() > 500 {
                         mode = Mode::Failsafe;
                     }
                 }
             }
+            ControlTaskEvent::RcState(new_rc_state) => {
+                rc_state = Update::Updated(new_rc_state);
+                rc_timestamp = Mono::now();
+                // update_mode(&mut mode, &rc_state);
+                // Might want to switch to manual mode if AHRS update times out (without throttle?)
+            }
         }
 
-        if cx.shared.flags.reset_ahrs.load(SeqCst) {
-            // Don't really like this yet
-            previous_output_calculation_state.controller.reset();
+        if let Some(imu_value) = imu_data.updated() {
+            let output = main_loop(&mut main_loop_state, imu_value, &rc_state);
+            if let Err(_) = pwm_output_sender.try_send(output) {
+                defmt::error!("error sending pwm output");
+            }
         }
+    }
+}
 
-        let (output_command, output_state) = crate::vehicle::control_logic::calculate_output(
-            &ahrs_state,
-            &rc_state,
-            &mode,
-            previous_output_calculation_state,
-        )
-        .await;
+fn parse_imu_data(buf: Box<IMUDATAPOOL>) -> ImuData {
+    let raw_acc_x = i16::from_be_bytes([buf[1], buf[2]]);
+    let raw_acc_y = i16::from_be_bytes([buf[3], buf[4]]);
+    let raw_acc_z = i16::from_be_bytes([buf[5], buf[6]]);
+    let raw_gyro_x = i16::from_be_bytes([buf[7], buf[8]]);
+    let raw_gyro_y = i16::from_be_bytes([buf[9], buf[10]]);
+    let raw_gyro_z = i16::from_be_bytes([buf[11], buf[12]]);
+    let raw_temperature = buf[13];
+    let raw_timestamp = u16::from_be_bytes([buf[14], buf[15]]);
+    let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
+    let acc_y = -raw_acc_y as f32 * 9.80665 / 2048.0;
+    let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
+    let gyro_x = -raw_gyro_x as f32 * PI / 180.0 / 16.4;
+    let gyro_y = raw_gyro_y as f32 * PI / 180.0 / 16.4;
+    let gyro_z = -raw_gyro_z as f32 * PI / 180.0 / 16.4;
+    let _temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
+    let timestamp: u16 = (raw_timestamp as u32 * 32 / 30) as u16;
 
-        let actuator_commands = output_mixing(&output_command);
-
-        pwm_output_sender.try_send(actuator_commands).ok();
-
-        // save the state
-        temporary_output_calculation_state = output_state;
+    ImuData {
+        acceleration: (acc_x, acc_y, acc_z),
+        rates: (gyro_x, gyro_y, gyro_z),
     }
 }

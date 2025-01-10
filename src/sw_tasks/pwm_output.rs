@@ -1,10 +1,8 @@
+use crate::common::ActuatorCommands;
+
 pub(crate) async fn pwm_output_task(
     cx: crate::app::pwm_output_task::Context<'_>,
-    mut pwm_output_receiver: rtic_sync::channel::Receiver<
-        'static,
-        crate::common::ActuatorCommands,
-        1,
-    >,
+    mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, ActuatorCommands, 1>,
 ) {
     use crate::app::Mono;
     use rtic_monotonics::systick::prelude::*;

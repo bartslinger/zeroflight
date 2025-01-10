@@ -29,9 +29,34 @@ pub struct RcState {
     pub pitch_offset: f32,
 }
 
-#[derive(Copy, Clone)]
+pub struct ImuData {
+    pub acceleration: (f32, f32, f32),
+    pub rates: (f32, f32, f32),
+}
+
 pub struct AhrsState {
     pub angles: dcmimu::EulerAngles,
     pub rates: (f32, f32, f32),
     pub _acceleration: (f32, f32, f32),
+}
+
+pub enum Update<T> {
+    Unchanged(T),
+    Updated(T),
+}
+
+impl<T> Update<T> {
+    pub fn value(&self) -> &T {
+        match self {
+            Update::Unchanged(data) => data,
+            Update::Updated(data) => data,
+        }
+    }
+
+    pub fn updated(&self) -> Option<&T> {
+        match self {
+            Update::Unchanged(_) => None,
+            Update::Updated(data) => Some(data),
+        }
+    }
 }
