@@ -1,6 +1,6 @@
 use crate::app::Mono;
 use crate::common::{
-    ActuatorCommands, ImuData, OutputCommand, RcState, TimestampedValue, Value, PI,
+    ActuatorPwmCommands, ImuData, OutputCommand, RcState, TimestampedValue, Value, PI,
 };
 use crate::vehicle::ahrs::Ahrs;
 use crate::vehicle::attitude_control::{AttitudeController, ControllerOutput};
@@ -46,7 +46,7 @@ pub fn main_loop(
     mode: &mut Mode,
     imu_update: &TimestampedValue<ImuData>,
     rc: &mut Value<RcState>,
-) -> ActuatorCommands {
+) -> ActuatorPwmCommands {
     let now = Mono::now();
 
     // RC mapping (update only if new RC state is available)

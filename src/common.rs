@@ -13,7 +13,7 @@ pub struct OutputCommand {
     pub yaw: f32,
 }
 
-pub struct ActuatorCommands {
+pub struct ActuatorPwmCommands {
     pub s1: u16,
     pub s2: u16,
     pub s3: u16,

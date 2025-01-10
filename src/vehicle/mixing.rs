@@ -1,6 +1,6 @@
-use crate::common::{ActuatorCommands, OutputCommand};
+use crate::common::{ActuatorPwmCommands, OutputCommand};
 
-pub fn output_mixing(command: &OutputCommand) -> ActuatorCommands {
+pub fn output_mixing(command: &OutputCommand) -> ActuatorPwmCommands {
     let s1 = if command.armed {
         command.throttle.max(0.0).min(1.0)
     } else {
@@ -34,7 +34,7 @@ pub fn output_mixing(command: &OutputCommand) -> ActuatorCommands {
     // let s5 = ((command.pitch as i16 - 1500) * -1 + 1500) as u16;
     // let s6 = command.pitch;
 
-    ActuatorCommands {
+    ActuatorPwmCommands {
         s1: ((s1 * 1000.0) as i16 + 1000) as u16,
         s2: ((s2 * 1000.0) as i16 + 1000) as u16,
         s3: ((s3 * 500.0) as i16 + 1500) as u16,

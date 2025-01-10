@@ -1,4 +1,4 @@
-use crate::common::{ActuatorCommands, ImuData, RcState, Value, PI};
+use crate::common::{ActuatorPwmCommands, ImuData, RcState, Value, PI};
 use crate::vehicle::modes::Mode;
 use crate::vehicle::{main_loop, MainState};
 use crate::IMUDATAPOOL;
@@ -8,7 +8,7 @@ pub(crate) async fn control_task(
     _cx: crate::app::control_task::Context<'_>,
     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-    mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorCommands, 1>,
+    mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorPwmCommands, 1>,
 ) {
     use futures::{select_biased, FutureExt};
 
