@@ -1,4 +1,5 @@
 use crate::boards::board;
+use crate::common::{ImuData, PI};
 use crate::drivers::icm42688p::Icm42688pDmaContext;
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
@@ -43,8 +44,8 @@ pub(crate) fn icm42688_interrupt_handler(
         fifo_count
     } else if filled_tx_buffer[0] == 0x30 | 0x80 {
         // Got IMU data
-        if let Ok(mut output) = IMUDATAPOOL.alloc([0u8; 16]) {
-            output.copy_from_slice(&filled_rx_buffer[1..17]);
+        let parsed_imu_data = parse_imu_data(&filled_rx_buffer[1..17]);
+        if let Ok(output) = IMUDATAPOOL.alloc(parsed_imu_data) {
             imu_data = Some(output);
         }
         // After that, request fifo count again
@@ -77,5 +78,29 @@ pub(crate) fn icm42688_interrupt_handler(
         if let Err(_e) = imu_data_sender.try_send(imu_data) {
             // defmt::info!("IMU data sender failed");
         };
+    }
+}
+
+fn parse_imu_data(buf: &[u8]) -> ImuData {
+    let raw_acc_x = i16::from_be_bytes([buf[1], buf[2]]);
+    let raw_acc_y = i16::from_be_bytes([buf[3], buf[4]]);
+    let raw_acc_z = i16::from_be_bytes([buf[5], buf[6]]);
+    let raw_gyro_x = i16::from_be_bytes([buf[7], buf[8]]);
+    let raw_gyro_y = i16::from_be_bytes([buf[9], buf[10]]);
+    let raw_gyro_z = i16::from_be_bytes([buf[11], buf[12]]);
+    let raw_temperature = buf[13];
+    let raw_timestamp = u16::from_be_bytes([buf[14], buf[15]]);
+    let acc_x = raw_acc_x as f32 * 9.80665 / 2048.0;
+    let acc_y = -raw_acc_y as f32 * 9.80665 / 2048.0;
+    let acc_z = raw_acc_z as f32 * 9.80665 / 2048.0;
+    let gyro_x = -raw_gyro_x as f32 * PI / 180.0 / 16.4;
+    let gyro_y = raw_gyro_y as f32 * PI / 180.0 / 16.4;
+    let gyro_z = -raw_gyro_z as f32 * PI / 180.0 / 16.4;
+    let _temperature_celsius = (raw_temperature as f32 / 2.07) + 25.0;
+    let _timestamp: u16 = (raw_timestamp as u32 * 32 / 30) as u16;
+
+    ImuData {
+        acceleration: (acc_x, acc_y, acc_z),
+        rates: (gyro_x, gyro_y, gyro_z),
     }
 }

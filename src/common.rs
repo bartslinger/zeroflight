@@ -24,6 +24,7 @@ pub struct ActuatorPwmCommands {
 
 pub type RcState = [u16; 10];
 
+#[derive(Clone, Copy)]
 pub struct ImuData {
     pub acceleration: (f32, f32, f32),
     pub rates: (f32, f32, f32),

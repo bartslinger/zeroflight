@@ -34,6 +34,9 @@ impl Default for MainState {
 /// This function runs every time a new IMU update is available. This is typically published
 /// at 1000Hz but could be different based on the configuration.
 ///
+/// Because the AHRS is slow (needs more than 1ms to calculate), the attitude is calculated at a
+/// lower frequency (250Hz) in a separate task and provided as input to this function.
+///
 /// # Design Decisions
 ///
 /// I want the main loop to be easily understandable. The RC values are raw PWM. It is up to the
@@ -43,7 +46,8 @@ impl Default for MainState {
 ///
 /// The outputs are also in PWM. So it is up this function to do the mixing and scaling.
 ///
-/// This function is also responsible for failsafe behavior for RC timeouts.
+/// This function is also responsible for safety such as arming and failsafe behavior for
+/// RC timeouts.
 ///
 pub fn main_loop(
     state: &mut MainState,

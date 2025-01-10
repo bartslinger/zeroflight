@@ -12,12 +12,13 @@ mod misc;
 mod sw_tasks;
 mod vehicle;
 
+use crate::common::ImuData;
 use defmt_rtt as _;
 use heapless::box_pool;
 use panic_halt as _;
 
 // Declare a pool
-box_pool!(IMUDATAPOOL: [u8; 16]);
+box_pool!(IMUDATAPOOL: ImuData);
 
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
@@ -62,7 +63,7 @@ mod app {
         TX_BUFFER_2: [u8; 129] = [0x00; 129],
         RX_BUFFER_1: [u8; 129] = [0x00; 129],
         RX_BUFFER_2: [u8; 129] = [0x00; 129],
-        IMU_DATA_CHANNEL_MEMORY: [BoxBlock<[u8; 16]>; 2] = [const { BoxBlock::new() }; 2],
+        IMU_DATA_CHANNEL_MEMORY: [BoxBlock<crate::ImuData>; 2] = [const { BoxBlock::new() }; 2],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
