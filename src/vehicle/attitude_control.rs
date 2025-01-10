@@ -1,4 +1,4 @@
-use crate::common::{AhrsState, PI};
+use crate::common::{AhrsState, ImuData, PI};
 pub struct ControllerOutput {
     pub roll: f32,
     pub pitch: f32,
@@ -25,13 +25,15 @@ impl AttitudeController {
 
     pub fn update(
         &mut self,
-        measurement: &AhrsState,
+        ahrs_state: &AhrsState,
+        imu_state: &ImuData,
         roll_setpoint_rad: f32,
         pitch_setpoint_rad: f32,
         integral_active: bool,
+        dt: f32,
     ) -> ControllerOutput {
-        let roll_error = roll_setpoint_rad - measurement.angles.roll;
-        let pitch_error = pitch_setpoint_rad - measurement.angles.pitch;
+        let roll_error = roll_setpoint_rad - ahrs_state.angles.roll;
+        let pitch_error = pitch_setpoint_rad - ahrs_state.angles.pitch;
 
         // INAV: fw_p_level = 20
         // with their weird scaling factor, that is 3.05 deg/s per degree
@@ -41,22 +43,24 @@ impl AttitudeController {
         let pitch_rate_setpoint = pitch_error * 3.05;
 
         self.stabilize_rates(
-            measurement,
+            imu_state,
             roll_rate_setpoint,
             pitch_rate_setpoint,
             integral_active,
+            dt,
         )
     }
 
     pub fn stabilize_rates(
         &mut self,
-        measurement: &AhrsState,
+        imu_state: &ImuData,
         roll_rate_setpoint: f32,
         pitch_rate_setpoint: f32,
         integral_active: bool,
+        dt: f32,
     ) -> ControllerOutput {
-        let roll_rate_error = roll_rate_setpoint - measurement.rates.0;
-        let pitch_rate_error = pitch_rate_setpoint - measurement.rates.1;
+        let roll_rate_error = roll_rate_setpoint - imu_state.rates.0;
+        let pitch_rate_error = pitch_rate_setpoint - imu_state.rates.1;
 
         // INAV GAINS
         // set fw_p_pitch = 15
@@ -87,10 +91,10 @@ impl AttitudeController {
         let fw_ff_roll = 1.93548387097 * 180.0 / PI;
 
         if integral_active {
-            self.roll_integral = (self.roll_integral + roll_rate_error * fw_i_roll * 0.01)
+            self.roll_integral = (self.roll_integral + roll_rate_error * fw_i_roll * dt)
                 .min(200.0)
                 .max(-200.0);
-            self.pitch_integral = (self.pitch_integral + pitch_rate_error * fw_i_pitch * 0.01)
+            self.pitch_integral = (self.pitch_integral + pitch_rate_error * fw_i_pitch * dt)
                 .min(200.0)
                 .max(-200.0);
         } else {

@@ -30,10 +30,9 @@ pub struct ImuData {
     pub rates: (f32, f32, f32),
 }
 
+#[derive(Copy, Clone, Default)]
 pub struct AhrsState {
     pub angles: dcmimu::EulerAngles,
-    pub rates: (f32, f32, f32),
-    pub _acceleration: (f32, f32, f32),
 }
 
 pub struct TimestampedValue<T> {
@@ -86,10 +85,10 @@ impl<T> MaybeUpdatedValue<T> {
     //     &self.inner.value
     // }
 
-    // pub fn read(&mut self) -> &TimestampedValue<T> {
-    //     self.updated = false;
-    //     &self.inner
-    // }
+    pub fn read(&mut self) -> &TimestampedValue<T> {
+        self.updated = false;
+        &self.inner
+    }
 
     pub fn updated(&mut self) -> Option<&TimestampedValue<T>> {
         if self.updated {

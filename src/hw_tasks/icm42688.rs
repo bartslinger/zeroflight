@@ -47,6 +47,8 @@ pub(crate) fn icm42688_interrupt_handler(
         let parsed_imu_data = parse_imu_data(&filled_rx_buffer[1..17]);
         if let Ok(output) = IMUDATAPOOL.alloc(parsed_imu_data) {
             imu_data = Some(output);
+        } else {
+            defmt::error!("IMU data pool full");
         }
         // After that, request fifo count again
         filled_tx_buffer[0] = 0x2E | 0x80;
@@ -76,7 +78,7 @@ pub(crate) fn icm42688_interrupt_handler(
     *prev_fifo_count = fifo_count;
     if let Some(imu_data) = imu_data.take() {
         if let Err(_e) = imu_data_sender.try_send(imu_data) {
-            // defmt::info!("IMU data sender failed");
+            defmt::info!("IMU data sender failed");
         };
     }
 }

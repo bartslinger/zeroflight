@@ -23,11 +23,12 @@ box_pool!(IMUDATAPOOL: ImuData);
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
     use crate::boards::board::{self, Board};
-    use crate::common::{ActuatorPwmCommands, RcState};
+    use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, RcState};
     use crate::drivers::icm42688p::Icm42688pDmaContext;
     use crate::hw_tasks::interrupt_handlers::dma2_stream0_irq;
     use crate::hw_tasks::interrupt_handlers::otg_fs_irq;
     use crate::hw_tasks::interrupt_handlers::usart1_irq;
+    use crate::sw_tasks::ahrs::ahrs_task;
     use crate::sw_tasks::control::control_task;
     use crate::sw_tasks::crsf::crsf_parser_task;
     use crate::sw_tasks::pwm_output::pwm_output_task;
@@ -76,6 +77,9 @@ mod app {
         }
 
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!(Box<IMUDATAPOOL>, 1);
+        let (imu_to_ahrs_data_sender, imu_to_ahrs_data_receiver) =
+            rtic_sync::make_channel!(ImuData, 1);
+        let (ahrs_state_tx, ahrs_state_rx) = rtic_sync::make_channel!(AhrsState, 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
         let (pwm_output_sender, pwm_output_receiver) =
@@ -209,7 +213,15 @@ mod app {
 
         // Spawn software tasks
         crsf_parser_task::spawn(crsf_data_receiver, rc_state_sender).ok();
-        control_task::spawn(imu_data_receiver, rc_state_receiver, pwm_output_sender).ok();
+        control_task::spawn(
+            imu_data_receiver,
+            imu_to_ahrs_data_sender,
+            ahrs_state_rx,
+            rc_state_receiver,
+            pwm_output_sender,
+        )
+        .ok();
+        ahrs_task::spawn(imu_to_ahrs_data_receiver, ahrs_state_tx).ok();
         pwm_output_task::spawn(pwm_output_receiver).ok();
 
         Mono::start(delay.release().release(), 168_000_000);
@@ -281,19 +293,28 @@ mod app {
         )]
         fn usart1_irq(cx: usart1_irq::Context);
 
-        #[task(priority = 3, shared = [])]
+        #[task(priority = 4, shared = [])]
         async fn crsf_parser_task(
             cx: crsf_parser_task::Context,
             mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
             mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
         );
 
-        #[task(priority = 2, local = [dwt], shared = [])]
+        #[task(priority = 3, local = [dwt], shared = [])]
         async fn control_task(
             _cx: control_task::Context,
             mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
+            mut imu_to_ahrs_data_sender: rtic_sync::channel::Sender<'static, ImuData, 1>,
+            mut ahrs_state_rx: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
             mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
             mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorPwmCommands, 1>,
+        );
+
+        #[task(priority = 2)]
+        async fn ahrs_task(
+            cx: ahrs_task::Context,
+            mut imu_to_ahrs_data_receiver: rtic_sync::channel::Receiver<'static, ImuData, 1>,
+            mut ahrs_state_tx: rtic_sync::channel::Sender<'static, AhrsState, 1>,
         );
 
         #[task(binds = OTG_FS, shared = [usb_dev, serial], priority = 1)]

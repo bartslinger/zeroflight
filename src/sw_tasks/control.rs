@@ -1,4 +1,4 @@
-use crate::common::{ActuatorPwmCommands, ImuData, MaybeUpdatedValue, RcState};
+use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdatedValue, RcState};
 use crate::vehicle::{main_loop, MainState};
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
@@ -6,6 +6,8 @@ use heapless::pool::boxed::Box;
 pub(crate) async fn control_task(
     cx: crate::app::control_task::Context<'_>,
     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
+    mut imu_to_ahrs_data_sender: rtic_sync::channel::Sender<'static, ImuData, 1>,
+    mut ahrs_state_rx: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
     mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
     mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorPwmCommands, 1>,
 ) {
@@ -18,8 +20,10 @@ pub(crate) async fn control_task(
         acceleration: (0.0, 0.0, 0.0),
         rates: (0.0, 0.0, 0.0),
     });
+    let mut ahrs_state = MaybeUpdatedValue::new(AhrsState::default());
 
     let mut main_loop_state = MainState::default();
+    let mut imu_forward_counter: u32 = 0;
 
     let mut main_loop_counter: u32 = 0;
     let mut previous_main_loop_tick = None;
@@ -38,6 +42,7 @@ pub(crate) async fn control_task(
         enum ControlTaskEvent {
             ImuData(Box<IMUDATAPOOL>),
             RcState(RcState),
+            AhrsState(AhrsState),
         }
 
         let event = select_biased! {
@@ -53,14 +58,33 @@ pub(crate) async fn control_task(
                     Err(_) => continue,
                 }
             }
+            v = ahrs_state_rx.recv().fuse() => {
+                match v {
+                    Ok(v) => ControlTaskEvent::AhrsState(v),
+                    Err(_) => continue,
+                }
+            }
         };
 
         match event {
             ControlTaskEvent::ImuData(new_imu_data) => {
-                imu_data.update(*new_imu_data);
+                let new_imu_data = *new_imu_data;
+                imu_data.update(new_imu_data);
+
+                // Forward every 4th IMU data to the AHRS task
+                imu_forward_counter += 1;
+                if imu_forward_counter % 4 == 0 {
+                    imu_forward_counter = 0;
+                    if let Err(_) = imu_to_ahrs_data_sender.try_send(new_imu_data) {
+                        defmt::error!("error sending imu data to ahrs");
+                    }
+                }
             }
             ControlTaskEvent::RcState(new_rc_state) => {
                 rc_state.update(new_rc_state);
+            }
+            ControlTaskEvent::AhrsState(new_ahrs_state) => {
+                ahrs_state.update(new_ahrs_state);
             } // TODO: Timeout? if no imu data, map rc directly to output?
         }
 
@@ -96,7 +120,13 @@ pub(crate) async fn control_task(
             main_loop_counter += 1;
 
             // Run the main loop
-            let output = main_loop(&mut main_loop_state, imu_value, &mut rc_state, 0.001);
+            let output = main_loop(
+                &mut main_loop_state,
+                imu_value,
+                &mut ahrs_state,
+                &mut rc_state,
+                0.001,
+            );
 
             let after = dwt.cyccnt.read();
             let runtime = after.wrapping_sub(tick);

@@ -1,8 +1,8 @@
 use crate::app::Mono;
 use crate::common::{
-    ActuatorPwmCommands, ImuData, MaybeUpdatedValue, OutputCommand, RcState, TimestampedValue, PI,
+    ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdatedValue, OutputCommand, RcState,
+    TimestampedValue, PI,
 };
-use crate::vehicle::ahrs::Ahrs;
 use crate::vehicle::attitude_control::{AttitudeController, ControllerOutput};
 use crate::vehicle::mixing::output_mixing;
 use crate::vehicle::modes::Mode;
@@ -12,7 +12,6 @@ use rtic_monotonics::Monotonic;
 pub struct MainState {
     armed: bool,
     mode: Mode,
-    ahrs: Ahrs,
     rc_command: TimestampedValue<RcCommand>,
     attitude_controller: AttitudeController,
 }
@@ -22,7 +21,6 @@ impl Default for MainState {
         MainState {
             armed: false,
             mode: Mode::Stabilized,
-            ahrs: Ahrs::new(),
             rc_command: TimestampedValue::new(RcCommand::default()),
             attitude_controller: AttitudeController::new(),
         }
@@ -52,10 +50,15 @@ impl Default for MainState {
 pub fn main_loop(
     state: &mut MainState,
     imu_update: &TimestampedValue<ImuData>,
+    ahrs_state: &mut MaybeUpdatedValue<AhrsState>,
     rc_state: &mut MaybeUpdatedValue<RcState>,
     dt: f32,
 ) -> ActuatorPwmCommands {
     let now = Mono::now();
+
+    // Use AHRS state, just get the value. This is updated at 250Hz so data might be a bit 'old'.
+    // Angles don't change that fast so it's fine. We still use 1000Hz for rates from IMU.
+    let ahrs_state = ahrs_state.read().value();
 
     // RC mapping (update only if new RC state is available)
     if let Some(new_rc_state) = rc_state.updated() {
@@ -84,11 +87,7 @@ pub fn main_loop(
 
     if rc_command.ahrs_reset_switch {
         state.attitude_controller.reset();
-        state.ahrs.reset();
     }
-    // Update AHRS with IMU data
-    // TODO: This could take longer than 1ms, thereby messing up the loop timing
-    let ahrs_state = state.ahrs.imu_update(imu_update, dt);
 
     // Run controller
     if !state.armed {
@@ -114,9 +113,11 @@ pub fn main_loop(
             let pitch_level_setpoint = 2.0 * PI / 180.0; // 2 degrees pitch up by default
             let ControllerOutput { roll, pitch } = state.attitude_controller.update(
                 ahrs_state,
+                imu_update.value(),
                 roll_setpoint,
                 pitch_level_setpoint + pitch_setpoint,
                 state.armed,
+                dt,
             );
             OutputCommand {
                 armed: state.armed,
@@ -132,10 +133,11 @@ pub fn main_loop(
             let pitch_rate_setpoint = rc_command.pitch * -90.0 * PI / 180.0;
 
             let ControllerOutput { roll, pitch } = state.attitude_controller.stabilize_rates(
-                ahrs_state,
+                imu_update.value(),
                 roll_rate_setpoint,
                 pitch_rate_setpoint,
                 state.armed,
+                dt,
             );
             OutputCommand {
                 armed: state.armed,
@@ -146,8 +148,14 @@ pub fn main_loop(
             }
         }
         Mode::Failsafe => {
-            let ControllerOutput { roll, pitch } =
-                state.attitude_controller.update(ahrs_state, 0.0, 0.0, true);
+            let ControllerOutput { roll, pitch } = state.attitude_controller.update(
+                ahrs_state,
+                imu_update.value(),
+                0.0,
+                0.0,
+                true,
+                dt,
+            );
             OutputCommand {
                 armed: false,
                 roll,
