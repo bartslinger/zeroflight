@@ -809,6 +809,7 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "embedded-hal 1.0.0",
+ "embedded-hal-nb",
  "futures",
  "heapless",
  "modular-bitfield",

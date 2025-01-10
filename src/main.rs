@@ -4,62 +4,44 @@
 #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
-mod blink;
-mod control;
-mod controller;
-mod crsf;
-mod icm42688p;
-mod imu;
-mod pwm_output;
-mod usb;
-
 mod boards;
+mod common;
+mod drivers;
+mod hw_tasks;
+mod misc;
+mod sw_tasks;
+mod vehicle;
 
+use crate::common::ImuData;
 use defmt_rtt as _;
 use heapless::box_pool;
 use panic_halt as _;
 
-struct OutputCommand {
-    armed: bool,
-    roll: u16,
-    pitch: u16,
-    throttle: u16,
-    #[allow(unused)]
-    yaw: u16,
-}
-
 // Declare a pool
-box_pool!(IMUDATAPOOL: [u8; 16]);
+box_pool!(IMUDATAPOOL: ImuData);
 
 #[rtic::app(device = board, dispatchers = [OTG_HS_EP1_OUT, OTG_HS_EP1_IN, OTG_HS_WKUP, OTG_HS])]
 mod app {
-    use crate::blink::blink;
     use crate::boards::board::{self, Board};
-    use crate::control::control_task;
-    use crate::crsf::crsf_parser;
-    use crate::crsf::usart1_irq;
-    use crate::crsf::RcState;
-    use crate::icm42688p::Icm42688pDmaContext;
-    use crate::imu::imu_rx_irq;
-    use crate::imu::{imu_handler, AhrsState};
-    use crate::pwm_output::pwm_output_task;
-    use crate::usb::usb_tx;
+    use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, RcState};
+    use crate::drivers::icm42688p::Icm42688pDmaContext;
+    use crate::hw_tasks::interrupt_handlers::dma2_stream0_irq;
+    use crate::hw_tasks::interrupt_handlers::otg_fs_irq;
+    use crate::hw_tasks::interrupt_handlers::usart1_irq;
+    use crate::sw_tasks::ahrs::ahrs_task;
+    use crate::sw_tasks::control::control_task;
+    use crate::sw_tasks::crsf::crsf_parser_task;
+    use crate::sw_tasks::pwm_output::pwm_output_task;
     use crate::IMUDATAPOOL;
-    use core::sync::atomic::AtomicBool;
     use heapless::pool::boxed::{Box, BoxBlock};
     use rtic_monotonics::systick::prelude::*;
 
-    systick_monotonic!(Mono, 1000);
-
-    pub struct Flags {
-        pub reset_ahrs: AtomicBool,
-    }
+    systick_monotonic!(Mono, 1_000);
 
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
-        flags: Flags,
     }
 
     #[local]
@@ -82,7 +64,7 @@ mod app {
         TX_BUFFER_2: [u8; 129] = [0x00; 129],
         RX_BUFFER_1: [u8; 129] = [0x00; 129],
         RX_BUFFER_2: [u8; 129] = [0x00; 129],
-        IMU_DATA_CHANNEL_MEMORY: [BoxBlock<[u8; 16]>; 2] = [const { BoxBlock::new() }; 2],
+        IMU_DATA_CHANNEL_MEMORY: [BoxBlock<crate::ImuData>; 2] = [const { BoxBlock::new() }; 2],
     ])]
     fn init(cx: init::Context) -> (Shared, Local) {
         use stm32f4xx_hal::prelude::*; // for .freeze() and constrain()
@@ -95,11 +77,13 @@ mod app {
         }
 
         let (imu_data_sender, imu_data_receiver) = rtic_sync::make_channel!(Box<IMUDATAPOOL>, 1);
+        let (imu_to_ahrs_data_sender, imu_to_ahrs_data_receiver) =
+            rtic_sync::make_channel!(ImuData, 1);
+        let (ahrs_state_tx, ahrs_state_rx) = rtic_sync::make_channel!(AhrsState, 1);
         let (crsf_data_sender, crsf_data_receiver) = rtic_sync::make_channel!(u8, 64);
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
         let (pwm_output_sender, pwm_output_receiver) =
-            rtic_sync::make_channel!(crate::OutputCommand, 1);
-        let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
+            rtic_sync::make_channel!(ActuatorPwmCommands, 1);
 
         let mut delay = cx.core.SYST.delay(&board.clocks);
 
@@ -120,10 +104,7 @@ mod app {
 
         let mut i2c1 = stm32f4xx_hal::i2c::I2c::new(
             board.I2C1,
-            (
-                board.i2c1.scl.into_open_drain_output(),
-                board.i2c1.sda.into_open_drain_output(),
-            ),
+            (board.i2c1.scl, board.i2c1.sda),
             stm32f4xx_hal::i2c::Mode::from(400.kHz()),
             &board.clocks,
         );
@@ -143,7 +124,6 @@ mod app {
         let start = dwt.cyccnt.read();
 
         let mut buf = [0];
-        // who am i?
         let res = i2c1.write_read(0x76_u8, &[0x0D], &mut buf);
         if let Err(_) = res {
             defmt::error!("I2C write_read error");
@@ -171,11 +151,11 @@ mod app {
 
         let mut cs = board.spi1.cs.into_push_pull_output();
         cs.set_high();
-        let mut icm42688p = crate::icm42688p::Icm42688p::new(spi1, cs);
+        let mut icm42688p = crate::drivers::icm42688p::Icm42688p::new(spi1, cs);
         icm42688p.init(&mut delay);
         let (spi1, cs) = icm42688p.release();
 
-        let icm42688p_dma_context = crate::icm42688p::start_dma(
+        let icm42688p_dma_context = crate::drivers::icm42688p::start_dma(
             cx.local.TX_BUFFER_1,
             cx.local.RX_BUFFER_1,
             cx.local.TX_BUFFER_2,
@@ -185,18 +165,6 @@ mod app {
             dma2.0,
             cs,
         );
-
-        // -----------------------------------------------------------------------------------------
-        // Configure timers for PWM output
-
-        // This is the configuration in INAV:
-        //     DEF_TIM(TIM4,   CH2, PB7,  TIM_USE_OUTPUT_AUTO,   1, 0), // S1 D(1,3,2)
-        //     DEF_TIM(TIM4,   CH1, PB6,  TIM_USE_OUTPUT_AUTO,   1, 0), // S2 D(1,0,2)
-        //
-        //     DEF_TIM(TIM3,   CH3, PB0,  TIM_USE_OUTPUT_AUTO,   1, 0), // S3 D(1,7,5)
-        //     DEF_TIM(TIM3,   CH4, PB1,  TIM_USE_OUTPUT_AUTO,   1, 0), // S4 D(1,2,5)
-        //     DEF_TIM(TIM8,   CH3, PC8,  TIM_USE_OUTPUT_AUTO,   1, 0), // S5 D(2,4,7)
-        //     DEF_TIM(TIM8,   CH4, PC9,  TIM_USE_OUTPUT_AUTO,   1, 0), // S6 D(2,7,7)
 
         // -----------------------------------------------------------------------------------------
         // Serial ELRS receiver
@@ -243,21 +211,22 @@ mod app {
         .unwrap()
         .build();
 
-        // Spawn tasks
-        imu_handler::spawn(imu_data_receiver, ahrs_state_sender).ok();
-        crsf_parser::spawn(crsf_data_receiver, rc_state_sender).ok();
-        control_task::spawn(ahrs_state_receiver, rc_state_receiver, pwm_output_sender).ok();
+        // Spawn software tasks
+        crsf_parser_task::spawn(crsf_data_receiver, rc_state_sender).ok();
+        control_task::spawn(
+            imu_data_receiver,
+            imu_to_ahrs_data_sender,
+            ahrs_state_rx,
+            rc_state_receiver,
+            pwm_output_sender,
+        )
+        .ok();
+        ahrs_task::spawn(imu_to_ahrs_data_receiver, ahrs_state_tx).ok();
         pwm_output_task::spawn(pwm_output_receiver).ok();
 
         Mono::start(delay.release().release(), 168_000_000);
         (
-            Shared {
-                usb_dev,
-                serial,
-                flags: Flags {
-                    reset_ahrs: AtomicBool::new(false),
-                },
-            },
+            Shared { usb_dev, serial },
             Local {
                 dwt,
                 icm42688p_dma_context,
@@ -270,34 +239,33 @@ mod app {
         )
     }
 
-    #[idle(local = [dwt])]
-    fn idle(cx: idle::Context) -> ! {
-        let dwt = cx.local.dwt;
-        blink::spawn().ok();
-
-        let mut prev_cyc_cnt = dwt.cyccnt.read();
-        let mut counter = 0;
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
+        // let dwt = cx.local.dwt;
+        //
+        // let mut prev_cyc_cnt = dwt.cyccnt.read();
+        // let mut counter = 0;
         loop {
             if true {
                 cortex_m::asm::wfi();
             } else {
-                cortex_m::asm::nop();
-                counter += 1;
-                if counter % 100_000 == 0 {
-                    // defmt::info!("write tons of data in idle loop to check if this locks the FC");
-                    // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
-                    // it's fine when the chip is started without debugger
-                }
-                if counter >= 16_800_000 {
-                    let cyc_cnt = dwt.cyccnt.read();
-                    let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
-                    let idle_time = 16_800_000_f32 * 10.;
-                    let ratio = 100. * (idle_time / time_passed as f32);
-
-                    defmt::info!("Idle: {}", ratio);
-                    prev_cyc_cnt = cyc_cnt;
-                    counter = 0;
-                }
+                // cortex_m::asm::nop();
+                // counter += 1;
+                // if counter % 100_000 == 0 {
+                //     // defmt::info!("write tons of data in idle loop to check if this locks the FC");
+                //     // this makes the chip hang after 4.25 seconds, when unplugging the debugger while active
+                //     // it's fine when the chip is started without debugger
+                // }
+                // if counter >= 16_800_000 {
+                //     let cyc_cnt = dwt.cyccnt.read();
+                //     let time_passed = cyc_cnt.wrapping_sub(prev_cyc_cnt);
+                //     let idle_time = 16_800_000_f32 * 10.;
+                //     let ratio = 100. * (idle_time / time_passed as f32);
+                //
+                //     defmt::info!("Idle: {}", ratio);
+                //     prev_cyc_cnt = cyc_cnt;
+                //     counter = 0;
+                // }
             }
         }
     }
@@ -306,7 +274,7 @@ mod app {
         #[task(priority = 10, local = [pwm_outputs])]
         async fn pwm_output_task(
             cx: pwm_output_task::Context,
-            mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, crate::OutputCommand, 1>,
+            mut pwm_output_receiver: rtic_sync::channel::Receiver<'static, ActuatorPwmCommands, 1>,
         );
 
         #[task(
@@ -315,7 +283,7 @@ mod app {
             local = [icm42688p_dma_context, prev_fifo_count, imu_data_sender],
             priority = 5
         )]
-        fn imu_rx_irq(cx: imu_rx_irq::Context);
+        fn dma2_stream0_irq(cx: dma2_stream0_irq::Context);
 
         #[task(
             binds = USART1,
@@ -325,33 +293,31 @@ mod app {
         )]
         fn usart1_irq(cx: usart1_irq::Context);
 
-        #[task(priority = 3, shared = [&flags])]
-        async fn crsf_parser(
-            cx: crsf_parser::Context,
+        #[task(priority = 4, shared = [])]
+        async fn crsf_parser_task(
+            cx: crsf_parser_task::Context,
             mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
             mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
         );
 
-        #[task(priority = 2, shared = [&flags])]
+        #[task(priority = 3, local = [dwt], shared = [])]
         async fn control_task(
             _cx: control_task::Context,
-            mut ahrs_state_receiver: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
+            mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
+            mut imu_to_ahrs_data_sender: rtic_sync::channel::Sender<'static, ImuData, 1>,
+            mut ahrs_state_rx: rtic_sync::channel::Receiver<'static, AhrsState, 1>,
             mut rc_state_receiver: rtic_sync::channel::Receiver<'static, RcState, 1>,
-            mut pwm_output_sender: rtic_sync::channel::Sender<'static, crate::OutputCommand, 1>,
+            mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorPwmCommands, 1>,
         );
 
-        #[task(priority = 2, shared = [&flags])]
-        async fn imu_handler(
-            _cx: imu_handler::Context,
-            mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
-            mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
+        #[task(priority = 2)]
+        async fn ahrs_task(
+            cx: ahrs_task::Context,
+            mut imu_to_ahrs_data_receiver: rtic_sync::channel::Receiver<'static, ImuData, 1>,
+            mut ahrs_state_tx: rtic_sync::channel::Sender<'static, AhrsState, 1>,
         );
 
         #[task(binds = OTG_FS, shared = [usb_dev, serial], priority = 1)]
-        fn usb_tx(cx: usb_tx::Context);
-
-        #[task(priority = 1)]
-        async fn blink(cx: blink::Context);
-
+        fn otg_fs_irq(cx: otg_fs_irq::Context);
     }
 }
