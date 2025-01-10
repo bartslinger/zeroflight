@@ -66,7 +66,7 @@ pub fn radio_mapping(rc_state: &RcState, armed: &mut bool) -> RcCommand {
         .min(1.0);
 
     // Only arm when throttle is zero
-    let new_armed_state = *armed || (!*armed && armed_us > 1500 && throttle_us <= 1000);
+    let new_armed_state = armed_us > 1500 && (*armed || (!*armed && throttle_us <= 1000));
     *armed = new_armed_state;
 
     RcCommand {
