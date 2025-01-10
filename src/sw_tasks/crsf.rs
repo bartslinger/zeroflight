@@ -39,13 +39,11 @@ pub(crate) fn ticks_to_us(ticks: u16) -> u16 {
 }
 
 pub(crate) async fn crsf_parser_task(
-    cx: crate::app::crsf_parser_task::Context<'_>,
+    _cx: crate::app::crsf_parser_task::Context<'_>,
     mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
     mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
 ) {
     defmt::info!("starting crsf parser");
-    let mut armed = false;
-    let mut previous_armed_channel_state: u16 = 1000;
 
     let crc8_dvb_s2 = crc::Crc::<u8>::new(&crc::CRC_8_DVB_S2);
     loop {
@@ -77,50 +75,62 @@ pub(crate) async fn crsf_parser_task(
         }
 
         let channels = Channels::from_bytes(channel_bytes);
-        let roll_us = ticks_to_us(channels.channel_01());
-        let pitch_us = ticks_to_us(channels.channel_02());
-        let throttle_us = ticks_to_us(channels.channel_03());
-        let yaw_us = ticks_to_us(channels.channel_04());
-        let armed_channel_us = ticks_to_us(channels.channel_05());
-        let mode_us = ticks_to_us(channels.channel_06());
-        // ...
-        let reset_channel = ticks_to_us(channels.channel_09());
-        let pitch_offset = ticks_to_us(channels.channel_10());
+        let rc_state = [
+            ticks_to_us(channels.channel_01()),
+            ticks_to_us(channels.channel_02()),
+            ticks_to_us(channels.channel_03()),
+            ticks_to_us(channels.channel_04()),
+            ticks_to_us(channels.channel_05()),
+            ticks_to_us(channels.channel_06()),
+            ticks_to_us(channels.channel_07()),
+            ticks_to_us(channels.channel_08()),
+            ticks_to_us(channels.channel_09()),
+            ticks_to_us(channels.channel_10()),
+        ];
+        // let roll_us = ticks_to_us(channels.channel_01());
+        // let pitch_us = ticks_to_us(channels.channel_02());
+        // let throttle_us = ticks_to_us(channels.channel_03());
+        // let yaw_us = ticks_to_us(channels.channel_04());
+        // let armed_channel_us = ticks_to_us(channels.channel_05());
+        // let mode_us = ticks_to_us(channels.channel_06());
+        // // ...
+        // let reset_channel = ticks_to_us(channels.channel_09());
+        // let pitch_offset = ticks_to_us(channels.channel_10());
 
-        if previous_armed_channel_state <= 1500 && armed_channel_us > 1500 && throttle_us <= 1000 {
-            armed = true;
-        }
-        if armed_channel_us < 1500 {
-            armed = false;
-        }
-        previous_armed_channel_state = armed_channel_us;
-
-        cx.shared
-            .flags
-            .reset_ahrs
-            .store(reset_channel > 1500, core::sync::atomic::Ordering::SeqCst);
-
-        let roll = ((roll_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
-        let pitch = ((pitch_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
-        let throttle = ((throttle_us as i16 - 1000) as f32 / 1000.0)
-            .max(0.0)
-            .min(1.0);
-        let yaw = ((yaw_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
-        let mode = ((mode_us as i16 - 1000) as f32 / 1000.0).max(0.0).min(1.0);
-        let pitch_offset = ((pitch_offset as i16 - 1500) as f32 / 500.0)
-            .max(-1.0)
-            .min(1.0);
-
-        let rc_in = RcState {
-            armed,
-            roll,
-            pitch,
-            throttle,
-            yaw,
-            mode,
-            pitch_offset,
-        };
-        if let Err(_) = tx.try_send(rc_in) {
+        // if previous_armed_channel_state <= 1500 && armed_channel_us > 1500 && throttle_us <= 1000 {
+        //     armed = true;
+        // }
+        // if armed_channel_us < 1500 {
+        //     armed = false;
+        // }
+        // previous_armed_channel_state = armed_channel_us;
+        //
+        // cx.shared
+        //     .flags
+        //     .reset_ahrs
+        //     .store(reset_channel > 1500, core::sync::atomic::Ordering::SeqCst);
+        //
+        // let roll = ((roll_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+        // let pitch = ((pitch_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+        // let throttle = ((throttle_us as i16 - 1000) as f32 / 1000.0)
+        //     .max(0.0)
+        //     .min(1.0);
+        // let yaw = ((yaw_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+        // let mode = ((mode_us as i16 - 1000) as f32 / 1000.0).max(0.0).min(1.0);
+        // let pitch_offset = ((pitch_offset as i16 - 1500) as f32 / 500.0)
+        //     .max(-1.0)
+        //     .min(1.0);
+        //
+        // let rc_in = RcState {
+        //     armed,
+        //     roll,
+        //     pitch,
+        //     throttle,
+        //     yaw,
+        //     mode,
+        //     pitch_offset,
+        // };
+        if let Err(_) = tx.try_send(rc_state) {
             // defmt::error!("error publishing rc state");
         }
     }

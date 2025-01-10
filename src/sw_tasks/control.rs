@@ -1,6 +1,6 @@
-use crate::common::{ActuatorCommands, ImuData, RcState, Update, PI};
+use crate::common::{ActuatorCommands, ImuData, RcState, Value, PI};
 use crate::vehicle::modes::Mode;
-use crate::vehicle::{main_loop, MainLoopState};
+use crate::vehicle::{main_loop, MainState};
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
 
@@ -14,22 +14,14 @@ pub(crate) async fn control_task(
 
     let mut mode = Mode::Stabilized;
 
-    let mut rc_state = Update::new(RcState {
-        armed: false,
-        roll: 0.0,
-        pitch: 0.0,
-        throttle: 0.0,
-        yaw: 0.0,
-        mode: 0.0,
-        pitch_offset: 0.0,
-    });
+    let mut rc_state = Value::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    let mut imu_data = Update::new(ImuData {
+    let mut imu_data = Value::new(ImuData {
         acceleration: (0.0, 0.0, 0.0),
         rates: (0.0, 0.0, 0.0),
     });
 
-    let mut main_loop_state = MainLoopState::default();
+    let mut main_loop_state = MainState::default();
 
     defmt::info!("control task started");
     loop {
@@ -62,13 +54,11 @@ pub(crate) async fn control_task(
             }
             ControlTaskEvent::RcState(new_rc_state) => {
                 rc_state.update(new_rc_state);
-                // update_mode(&mut mode, &rc_state);
-                // Might want to switch to manual mode if AHRS update times out (without throttle?)
-            }
+            } // TODO: Timeout? if no imu data, map rc directly to output?
         }
 
         if let Some(imu_value) = imu_data.updated() {
-            let output = main_loop(&mut main_loop_state, &mut mode, imu_value, &rc_state);
+            let output = main_loop(&mut main_loop_state, &mut mode, imu_value, &mut rc_state);
             if let Err(_) = pwm_output_sender.try_send(output) {
                 defmt::error!("error sending pwm output");
             }

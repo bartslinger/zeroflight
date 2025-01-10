@@ -5,4 +5,4 @@ pub mod mixing;
 pub mod modes;
 mod radio;
 
-pub use main_loop::{main_loop, MainLoopState};
+pub use main_loop::{main_loop, MainState};

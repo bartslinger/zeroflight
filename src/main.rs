@@ -32,21 +32,20 @@ mod app {
     use crate::sw_tasks::crsf::crsf_parser_task;
     use crate::sw_tasks::pwm_output::pwm_output_task;
     use crate::IMUDATAPOOL;
-    use core::sync::atomic::AtomicBool;
     use heapless::pool::boxed::{Box, BoxBlock};
     use rtic_monotonics::systick::prelude::*;
 
     systick_monotonic!(Mono, 1000);
 
-    pub struct Flags {
-        pub reset_ahrs: AtomicBool,
-    }
+    // pub struct Flags {
+    //     pub reset_ahrs: AtomicBool,
+    // }
 
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
-        flags: Flags,
+        // flags: Flags,
     }
 
     #[local]
@@ -227,9 +226,9 @@ mod app {
             Shared {
                 usb_dev,
                 serial,
-                flags: Flags {
-                    reset_ahrs: AtomicBool::new(false),
-                },
+                // flags: Flags {
+                //     reset_ahrs: AtomicBool::new(false),
+                // },
             },
             Local {
                 dwt,
@@ -297,14 +296,14 @@ mod app {
         )]
         fn usart1_irq(cx: usart1_irq::Context);
 
-        #[task(priority = 3, shared = [&flags])]
+        #[task(priority = 3, shared = [])]
         async fn crsf_parser_task(
             cx: crsf_parser_task::Context,
             mut rx: rtic_sync::channel::Receiver<'static, u8, 64>,
             mut tx: rtic_sync::channel::Sender<'static, RcState, 1>,
         );
 
-        #[task(priority = 2, shared = [&flags])]
+        #[task(priority = 2, shared = [])]
         async fn control_task(
             _cx: control_task::Context,
             mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
@@ -312,7 +311,7 @@ mod app {
             mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorCommands, 1>,
         );
 
-        // #[task(priority = 2, shared = [&flags])]
+        // #[task(priority = 2, shared = [])]
         // async fn ahrs_task(
         //     _cx: ahrs_task::Context,
         //     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,

@@ -7,33 +7,76 @@ pub enum ThreePositionSwitch {
     High,
 }
 
-pub struct RadioMapping {
+impl ThreePositionSwitch {
+    pub fn from(us: u16) -> Self {
+        if us < 1400 {
+            ThreePositionSwitch::Low
+        } else if us < 1600 {
+            ThreePositionSwitch::Middle
+        } else {
+            ThreePositionSwitch::High
+        }
+    }
+}
+
+pub struct RcCommand {
     pub roll: f32,
     pub pitch: f32,
     pub throttle: f32,
     pub yaw: f32,
-    pub armed: bool,
     pub mode_switch: ThreePositionSwitch,
     pub pitch_offset: f32,
     pub ahrs_reset_switch: bool,
 }
 
-pub fn radio_mapping(rc_state: &RcState) -> RadioMapping {
-    // TODO: change the RcState to contain the raw pwm values per channel
-    RadioMapping {
-        roll: rc_state.roll,
-        pitch: rc_state.pitch,
-        throttle: rc_state.throttle,
-        yaw: rc_state.yaw,
-        armed: rc_state.armed,
-        mode_switch: if rc_state.mode < 0.33 {
-            ThreePositionSwitch::Low
-        } else if rc_state.mode < 0.66 {
-            ThreePositionSwitch::Middle
-        } else {
-            ThreePositionSwitch::High
-        },
-        pitch_offset: rc_state.pitch_offset,
-        ahrs_reset_switch: false,
+impl Default for RcCommand {
+    fn default() -> Self {
+        RcCommand {
+            roll: 0.0,
+            pitch: 0.0,
+            throttle: 0.0,
+            yaw: 0.0,
+            mode_switch: ThreePositionSwitch::Low,
+            pitch_offset: 0.0,
+            ahrs_reset_switch: false,
+        }
+    }
+}
+
+pub fn radio_mapping(rc_state: &RcState, previous_armed_state: &mut bool) -> RcCommand {
+    let roll_us = rc_state[0];
+    let pitch_us = rc_state[1];
+    let throttle_us = rc_state[2];
+    let yaw_us = rc_state[3];
+    let armed_us = rc_state[4];
+    let mode_us = rc_state[5];
+
+    // These are some custom mappings for development
+    let reset_channel_us = rc_state[7];
+    let pitch_offset_us = rc_state[9];
+
+    let roll = ((roll_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+    let pitch = ((pitch_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+    let throttle = ((throttle_us as i16 - 1000) as f32 / 1000.0)
+        .max(0.0)
+        .min(1.0);
+    let yaw = ((yaw_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);
+    let pitch_offset = ((pitch_offset_us as i16 - 1500) as f32 / 500.0)
+        .max(-1.0)
+        .min(1.0);
+
+    // Only arm when throttle is zero
+    let armed =
+        *previous_armed_state || (!*previous_armed_state && armed_us > 1500 && throttle_us <= 1000);
+    *previous_armed_state = armed;
+
+    RcCommand {
+        roll,
+        pitch,
+        throttle,
+        yaw,
+        mode_switch: ThreePositionSwitch::from(mode_us),
+        pitch_offset,
+        ahrs_reset_switch: reset_channel_us > 1500,
     }
 }

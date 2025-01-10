@@ -1,20 +1,27 @@
 use crate::app::Mono;
-use crate::common::{ActuatorCommands, ImuData, OutputCommand, RcState, Update, PI};
+use crate::common::{
+    ActuatorCommands, ImuData, OutputCommand, RcState, TimestampedValue, Value, PI,
+};
 use crate::vehicle::ahrs::Ahrs;
 use crate::vehicle::attitude_control::{AttitudeController, ControllerOutput};
 use crate::vehicle::mixing::output_mixing;
 use crate::vehicle::modes::Mode;
-use crate::vehicle::radio::{radio_mapping, ThreePositionSwitch};
+use crate::vehicle::radio::{radio_mapping, RcCommand, ThreePositionSwitch};
+use rtic_monotonics::Monotonic;
 
-pub struct MainLoopState {
+pub struct MainState {
+    armed: bool,
     ahrs: Ahrs,
+    rc_command: TimestampedValue<RcCommand>,
     attitude_controller: AttitudeController,
 }
 
-impl Default for MainLoopState {
+impl Default for MainState {
     fn default() -> Self {
-        MainLoopState {
+        MainState {
+            armed: false,
             ahrs: Ahrs::new(),
+            rc_command: TimestampedValue::new(RcCommand::default()),
             attitude_controller: AttitudeController::new(),
         }
     }
@@ -35,24 +42,26 @@ impl Default for MainLoopState {
 /// The outputs are also in PWM. So it is up this function to do the mixing and scaling.
 ///
 pub fn main_loop(
-    state: &mut MainLoopState,
+    state: &mut MainState,
     mode: &mut Mode,
-    imu_update: &ImuData,
-    rc: &Update<RcState>,
+    imu_update: &TimestampedValue<ImuData>,
+    rc: &mut Value<RcState>,
 ) -> ActuatorCommands {
-    use rtic_monotonics::Monotonic;
     let now = Mono::now();
 
-    // Parse RC input
-    let rc_state = rc.timestamped_value();
-    let rc_command = radio_mapping(&rc_state.value);
+    // RC mapping (update only if new RC state is available)
+    if let Some(rc_state) = rc.updated() {
+        let rc_command = radio_mapping(rc_state.value(), &mut state.armed);
+        state.rc_command.update(rc_command);
+    }
+    let rc_command = state.rc_command.value();
 
     // Activate failsafe if armed and no RC signal for 500ms
     let rc_timed_out = now
-        .checked_duration_since(rc_state.timestamp)
+        .checked_duration_since(state.rc_command.timestamp)
         .map(|dt| dt.to_millis() > 500)
         .unwrap_or(true);
-    if rc_command.armed && rc_timed_out {
+    if state.armed && rc_timed_out {
         *mode = Mode::Failsafe;
     }
 
@@ -61,7 +70,7 @@ pub fn main_loop(
         state.attitude_controller.reset();
         state.ahrs.reset();
     }
-    let ahrs_state = state.ahrs.imu_update(imu_update);
+    let ahrs_state = state.ahrs.imu_update(imu_update.value());
 
     // Update (flight) mode
     *mode = match rc_command.mode_switch {
@@ -71,9 +80,12 @@ pub fn main_loop(
     };
 
     // Run controller
+    if !state.armed {
+        state.attitude_controller.reset();
+    }
     let output_command = match mode {
         Mode::Manual => OutputCommand {
-            armed: rc_command.armed,
+            armed: state.armed,
             roll: rc_command.roll,
             pitch: rc_command.pitch,
             throttle: rc_command.throttle,
@@ -92,10 +104,10 @@ pub fn main_loop(
                 ahrs_state,
                 roll_setpoint,
                 pitch_level_setpoint + pitch_setpoint,
-                rc_command.armed,
+                state.armed,
             );
             OutputCommand {
-                armed: rc_command.armed,
+                armed: state.armed,
                 roll,
                 pitch,
                 throttle: rc_command.throttle,
@@ -111,10 +123,10 @@ pub fn main_loop(
                 ahrs_state,
                 roll_rate_setpoint,
                 pitch_rate_setpoint,
-                rc_command.armed,
+                state.armed,
             );
             OutputCommand {
-                armed: rc_command.armed,
+                armed: state.armed,
                 roll,
                 pitch,
                 throttle: rc_command.throttle,

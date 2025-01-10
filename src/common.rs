@@ -1,5 +1,6 @@
 use crate::app::Mono;
 use rtic_monotonics::fugit::Instant;
+use rtic_monotonics::Monotonic;
 
 pub const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
@@ -21,16 +22,7 @@ pub struct ActuatorCommands {
     pub s6: u16,
 }
 
-#[derive(Clone, Copy)]
-pub struct RcState {
-    pub armed: bool,
-    pub roll: f32,
-    pub pitch: f32,
-    pub throttle: f32,
-    pub yaw: f32,
-    pub mode: f32,
-    pub pitch_offset: f32,
-}
+pub type RcState = [u16; 10];
 
 pub struct ImuData {
     pub acceleration: (f32, f32, f32),
@@ -45,55 +37,60 @@ pub struct AhrsState {
 
 pub struct TimestampedValue<T> {
     pub timestamp: Instant<u32, 1, 1000>,
-    pub value: T,
+    value: T,
 }
 
 impl<T> TimestampedValue<T> {
     pub fn new(inner: T) -> Self {
-        use rtic_monotonics::Monotonic;
         TimestampedValue {
             timestamp: Mono::now(),
             value: inner,
         }
     }
-}
-
-pub enum Update<T> {
-    Unchanged(TimestampedValue<T>),
-    Updated(TimestampedValue<T>),
-}
-
-impl<T> Update<T> {
-    pub fn new(initial_value: T) -> Self {
-        Update::Unchanged(TimestampedValue::new(initial_value))
-    }
 
     pub fn update(&mut self, value: T) {
-        use rtic_monotonics::Monotonic;
-        *self = Update::Updated(TimestampedValue {
-            value: value,
-            timestamp: Mono::now(),
-        });
+        self.value = value;
+        self.timestamp = Mono::now();
     }
 
-    pub fn timestamped_value(&self) -> &TimestampedValue<T> {
-        match self {
-            Update::Unchanged(data) => data,
-            Update::Updated(data) => data,
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+}
+
+pub struct Value<T> {
+    inner: TimestampedValue<T>,
+    updated: bool,
+}
+
+impl<T> Value<T> {
+    pub fn new(initial_value: T) -> Self {
+        Self {
+            inner: TimestampedValue::new(initial_value),
+            updated: false,
         }
     }
 
-    // pub fn value(&self) -> &T {
-    //     match self {
-    //         Update::Unchanged(data) => &data.value,
-    //         Update::Updated(data) => &data.value,
-    //     }
+    pub fn update(&mut self, value: T) {
+        self.inner.update(value);
+        self.updated = true;
+    }
+
+    // pub fn peek(&self) -> &T {
+    //     &self.inner.value
     // }
 
-    pub fn updated(&self) -> Option<&T> {
-        match self {
-            Update::Unchanged(_) => None,
-            Update::Updated(data) => Some(&data.value),
+    // pub fn read(&mut self) -> &TimestampedValue<T> {
+    //     self.updated = false;
+    //     &self.inner
+    // }
+
+    pub fn updated(&mut self) -> Option<&TimestampedValue<T>> {
+        if self.updated {
+            self.updated = false;
+            Some(&self.inner)
+        } else {
+            None
         }
     }
 }
