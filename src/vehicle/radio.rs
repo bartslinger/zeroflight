@@ -52,7 +52,7 @@ pub fn radio_mapping(rc_state: &RcState, armed: &mut bool) -> RcCommand {
     let mode_us = rc_state[5];
 
     // These are some custom mappings for development
-    let reset_channel_us = rc_state[7];
+    let reset_channel_us = rc_state[8];
     let pitch_offset_us = rc_state[9];
 
     let roll = ((roll_us as i16 - 1500) as f32 / 500.0).max(-1.0).min(1.0);

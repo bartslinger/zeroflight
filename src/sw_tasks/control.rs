@@ -106,12 +106,12 @@ pub(crate) async fn control_task(
                 //     max_loop_delta / 168,
                 //     average_loop_delta / 168.0,
                 // );
-                defmt::info!(
-                    "runtime min: {} max: {} avg: {}",
-                    min_runtime / 168,
-                    max_runtime / 168,
-                    average_runtime / 168.0
-                );
+                // defmt::info!(
+                //     "runtime min: {} max: {} avg: {}",
+                //     min_runtime / 168,
+                //     max_runtime / 168,
+                //     average_runtime / 168.0
+                // );
                 min_loop_delta = u32::MAX;
                 max_loop_delta = 0;
             }
