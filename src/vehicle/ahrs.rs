@@ -1,4 +1,4 @@
-use crate::common::{AhrsState, ImuData};
+use crate::common::{AhrsState, ImuData, TimestampedValue};
 use dcmimu::DCMIMU;
 
 pub struct Ahrs {
@@ -24,15 +24,16 @@ impl Ahrs {
         }
     }
 
-    pub fn imu_update(&mut self, imu_update: &ImuData) -> &AhrsState {
+    pub fn imu_update(&mut self, imu_update: &TimestampedValue<ImuData>, dt: f32) -> &AhrsState {
         if self.imu_update_counter % 10 == 0 {
             self.imu_update_counter = 0;
+            let imu_value = imu_update.value();
             let (dcm, _gyro_bias) =
                 self.dcmimu
-                    .update(imu_update.rates, imu_update.acceleration, 0.01);
+                    .update(imu_value.rates, imu_value.acceleration, 0.1 * dt); // because we only use every 10th sample
 
             self.state.angles = dcm;
-            self.state.rates = imu_update.rates;
+            self.state.rates = imu_value.rates;
         }
         // TODO: Could propagate the gyro's on the angles between the dcmimu updates
         self.imu_update_counter += 1;

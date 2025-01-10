@@ -48,6 +48,11 @@ impl<T> TimestampedValue<T> {
         }
     }
 
+    pub fn set(&mut self, value: T, timestamp: Instant<u32, 1, 1000>) {
+        self.value = value;
+        self.timestamp = timestamp;
+    }
+
     pub fn update(&mut self, value: T) {
         self.value = value;
         self.timestamp = Mono::now();
@@ -58,12 +63,12 @@ impl<T> TimestampedValue<T> {
     }
 }
 
-pub struct Value<T> {
+pub struct MaybeUpdatedValue<T> {
     inner: TimestampedValue<T>,
     updated: bool,
 }
 
-impl<T> Value<T> {
+impl<T> MaybeUpdatedValue<T> {
     pub fn new(initial_value: T) -> Self {
         Self {
             inner: TimestampedValue::new(initial_value),

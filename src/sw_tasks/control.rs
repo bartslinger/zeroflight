@@ -1,5 +1,4 @@
-use crate::common::{ActuatorPwmCommands, ImuData, RcState, Value, PI};
-use crate::vehicle::modes::Mode;
+use crate::common::{ActuatorPwmCommands, ImuData, MaybeUpdatedValue, RcState, PI};
 use crate::vehicle::{main_loop, MainState};
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
@@ -12,11 +11,9 @@ pub(crate) async fn control_task(
 ) {
     use futures::{select_biased, FutureExt};
 
-    let mut mode = Mode::Stabilized;
+    let mut rc_state = MaybeUpdatedValue::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    let mut rc_state = Value::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-
-    let mut imu_data = Value::new(ImuData {
+    let mut imu_data = MaybeUpdatedValue::new(ImuData {
         acceleration: (0.0, 0.0, 0.0),
         rates: (0.0, 0.0, 0.0),
     });
@@ -58,7 +55,7 @@ pub(crate) async fn control_task(
         }
 
         if let Some(imu_value) = imu_data.updated() {
-            let output = main_loop(&mut main_loop_state, &mut mode, imu_value, &mut rc_state);
+            let output = main_loop(&mut main_loop_state, imu_value, &mut rc_state, 0.001);
             if let Err(_) = pwm_output_sender.try_send(output) {
                 defmt::error!("error sending pwm output");
             }

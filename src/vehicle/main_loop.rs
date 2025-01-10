@@ -1,6 +1,6 @@
 use crate::app::Mono;
 use crate::common::{
-    ActuatorPwmCommands, ImuData, OutputCommand, RcState, TimestampedValue, Value, PI,
+    ActuatorPwmCommands, ImuData, MaybeUpdatedValue, OutputCommand, RcState, TimestampedValue, PI,
 };
 use crate::vehicle::ahrs::Ahrs;
 use crate::vehicle::attitude_control::{AttitudeController, ControllerOutput};
@@ -11,6 +11,7 @@ use rtic_monotonics::Monotonic;
 
 pub struct MainState {
     armed: bool,
+    mode: Mode,
     ahrs: Ahrs,
     rc_command: TimestampedValue<RcCommand>,
     attitude_controller: AttitudeController,
@@ -20,6 +21,7 @@ impl Default for MainState {
     fn default() -> Self {
         MainState {
             armed: false,
+            mode: Mode::Stabilized,
             ahrs: Ahrs::new(),
             rc_command: TimestampedValue::new(RcCommand::default()),
             attitude_controller: AttitudeController::new(),
@@ -43,16 +45,16 @@ impl Default for MainState {
 ///
 pub fn main_loop(
     state: &mut MainState,
-    mode: &mut Mode,
     imu_update: &TimestampedValue<ImuData>,
-    rc: &mut Value<RcState>,
+    rc_state: &mut MaybeUpdatedValue<RcState>,
+    dt: f32,
 ) -> ActuatorPwmCommands {
     let now = Mono::now();
 
     // RC mapping (update only if new RC state is available)
-    if let Some(rc_state) = rc.updated() {
-        let rc_command = radio_mapping(rc_state.value(), &mut state.armed);
-        state.rc_command.update(rc_command);
+    if let Some(new_rc_state) = rc_state.updated() {
+        let rc_command = radio_mapping(new_rc_state.value(), &mut state.armed);
+        state.rc_command.set(rc_command, new_rc_state.timestamp);
     }
     let rc_command = state.rc_command.value();
 
@@ -62,18 +64,18 @@ pub fn main_loop(
         .map(|dt| dt.to_millis() > 500)
         .unwrap_or(true);
     if state.armed && rc_timed_out {
-        *mode = Mode::Failsafe;
+        state.mode = Mode::Failsafe;
     }
 
-    // Update AHRS based on IMU data
     if rc_command.ahrs_reset_switch {
         state.attitude_controller.reset();
         state.ahrs.reset();
     }
-    let ahrs_state = state.ahrs.imu_update(imu_update.value());
+    // Update AHRS with IMU data
+    let ahrs_state = state.ahrs.imu_update(imu_update, dt);
 
     // Update (flight) mode
-    *mode = match rc_command.mode_switch {
+    state.mode = match rc_command.mode_switch {
         ThreePositionSwitch::Low => Mode::Stabilized,
         ThreePositionSwitch::Middle => Mode::Acro,
         ThreePositionSwitch::High => Mode::Manual,
@@ -83,7 +85,7 @@ pub fn main_loop(
     if !state.armed {
         state.attitude_controller.reset();
     }
-    let output_command = match mode {
+    let output_command = match state.mode {
         Mode::Manual => OutputCommand {
             armed: state.armed,
             roll: rc_command.roll,
@@ -92,13 +94,13 @@ pub fn main_loop(
             yaw: rc_command.yaw,
         },
         Mode::Stabilized => {
-            let pitch_offset = if rc_command.pitch_offset > 0.0 {
+            let rc_pitch_offset = if rc_command.pitch_offset > 0.0 {
                 -rc_command.pitch_offset
             } else {
                 0.0
             };
             let roll_setpoint = rc_command.roll * 45.0 * PI / 180.0;
-            let pitch_setpoint = (rc_command.pitch + pitch_offset) * -30.0 * PI / 180.0;
+            let pitch_setpoint = (rc_command.pitch + rc_pitch_offset) * -30.0 * PI / 180.0;
             let pitch_level_setpoint = 2.0 * PI / 180.0; // 2 degrees pitch up by default
             let ControllerOutput { roll, pitch } = state.attitude_controller.update(
                 ahrs_state,
