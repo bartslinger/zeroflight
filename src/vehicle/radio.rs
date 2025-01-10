@@ -43,7 +43,7 @@ impl Default for RcCommand {
     }
 }
 
-pub fn radio_mapping(rc_state: &RcState, previous_armed_state: &mut bool) -> RcCommand {
+pub fn radio_mapping(rc_state: &RcState, armed: &mut bool) -> RcCommand {
     let roll_us = rc_state[0];
     let pitch_us = rc_state[1];
     let throttle_us = rc_state[2];
@@ -66,9 +66,8 @@ pub fn radio_mapping(rc_state: &RcState, previous_armed_state: &mut bool) -> RcC
         .min(1.0);
 
     // Only arm when throttle is zero
-    let armed =
-        *previous_armed_state || (!*previous_armed_state && armed_us > 1500 && throttle_us <= 1000);
-    *previous_armed_state = armed;
+    let new_armed_state = *armed || (!*armed && armed_us > 1500 && throttle_us <= 1000);
+    *armed = new_armed_state;
 
     RcCommand {
         roll,

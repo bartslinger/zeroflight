@@ -37,11 +37,13 @@ impl Default for MainState {
 /// # Design Decisions
 ///
 /// I want the main loop to be easily understandable. The RC values are raw PWM. It is up to the
-/// implementation of this function to create a more high-level abstraction.
+/// implementation of this function to create a more high-level abstraction (RcCommand).
 /// The IMU data is 'unfiltered', except for filtering that happens on the IMU itself. The units are
 /// in m/s^2 and rad/s.
 ///
 /// The outputs are also in PWM. So it is up this function to do the mixing and scaling.
+///
+/// This function is also responsible for failsafe behavior for RC timeouts.
 ///
 pub fn main_loop(
     state: &mut MainState,
@@ -58,13 +60,22 @@ pub fn main_loop(
     }
     let rc_command = state.rc_command.value();
 
-    // Activate failsafe if armed and no RC signal for 500ms
     let rc_timed_out = now
         .checked_duration_since(state.rc_command.timestamp)
         .map(|dt| dt.to_millis() > 500)
         .unwrap_or(true);
+
+    // Update (flight) mode
     if state.armed && rc_timed_out {
+        // Activate failsafe if armed and no RC signal for 500ms
         state.mode = Mode::Failsafe;
+        // I chose not to disarm now, so it will respond immediately when RC becomes available again
+    } else {
+        state.mode = match rc_command.mode_switch {
+            ThreePositionSwitch::Low => Mode::Stabilized,
+            ThreePositionSwitch::Middle => Mode::Acro,
+            ThreePositionSwitch::High => Mode::Manual,
+        };
     }
 
     if rc_command.ahrs_reset_switch {
@@ -73,13 +84,6 @@ pub fn main_loop(
     }
     // Update AHRS with IMU data
     let ahrs_state = state.ahrs.imu_update(imu_update, dt);
-
-    // Update (flight) mode
-    state.mode = match rc_command.mode_switch {
-        ThreePositionSwitch::Low => Mode::Stabilized,
-        ThreePositionSwitch::Middle => Mode::Acro,
-        ThreePositionSwitch::High => Mode::Manual,
-    };
 
     // Run controller
     if !state.armed {
@@ -95,6 +99,7 @@ pub fn main_loop(
         },
         Mode::Stabilized => {
             let rc_pitch_offset = if rc_command.pitch_offset > 0.0 {
+                // This is used to add pitch up command for a very simple sort of launch mode
                 -rc_command.pitch_offset
             } else {
                 0.0

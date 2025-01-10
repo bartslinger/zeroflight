@@ -27,7 +27,6 @@ mod app {
     use crate::hw_tasks::interrupt_handlers::dma2_stream0_irq;
     use crate::hw_tasks::interrupt_handlers::otg_fs_irq;
     use crate::hw_tasks::interrupt_handlers::usart1_irq;
-    use crate::sw_tasks::blink::blink_task;
     use crate::sw_tasks::control::control_task;
     use crate::sw_tasks::crsf::crsf_parser_task;
     use crate::sw_tasks::pwm_output::pwm_output_task;
@@ -37,15 +36,10 @@ mod app {
 
     systick_monotonic!(Mono, 1000);
 
-    // pub struct Flags {
-    //     pub reset_ahrs: AtomicBool,
-    // }
-
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
         serial: usbd_serial::SerialPort<'static, stm32f4xx_hal::otg_fs::UsbBusType>,
-        // flags: Flags,
     }
 
     #[local]
@@ -85,7 +79,6 @@ mod app {
         let (rc_state_sender, rc_state_receiver) = rtic_sync::make_channel!(RcState, 1);
         let (pwm_output_sender, pwm_output_receiver) =
             rtic_sync::make_channel!(ActuatorPwmCommands, 1);
-        // let (ahrs_state_sender, ahrs_state_receiver) = rtic_sync::make_channel!(AhrsState, 1);
 
         let mut delay = cx.core.SYST.delay(&board.clocks);
 
@@ -126,7 +119,6 @@ mod app {
         let start = dwt.cyccnt.read();
 
         let mut buf = [0];
-        // who am i?
         let res = i2c1.write_read(0x76_u8, &[0x0D], &mut buf);
         if let Err(_) = res {
             defmt::error!("I2C write_read error");
@@ -215,21 +207,13 @@ mod app {
         .build();
 
         // Spawn software tasks
-        blink_task::spawn().ok();
-        // ahrs_task::spawn(imu_data_receiver, ahrs_state_sender).ok();
         crsf_parser_task::spawn(crsf_data_receiver, rc_state_sender).ok();
         control_task::spawn(imu_data_receiver, rc_state_receiver, pwm_output_sender).ok();
         pwm_output_task::spawn(pwm_output_receiver).ok();
 
         Mono::start(delay.release().release(), 168_000_000);
         (
-            Shared {
-                usb_dev,
-                serial,
-                // flags: Flags {
-                //     reset_ahrs: AtomicBool::new(false),
-                // },
-            },
+            Shared { usb_dev, serial },
             Local {
                 dwt,
                 icm42688p_dma_context,
@@ -311,18 +295,7 @@ mod app {
             mut pwm_output_sender: rtic_sync::channel::Sender<'static, ActuatorPwmCommands, 1>,
         );
 
-        // #[task(priority = 2, shared = [])]
-        // async fn ahrs_task(
-        //     _cx: ahrs_task::Context,
-        //     mut imu_data_receiver: rtic_sync::channel::Receiver<'static, Box<IMUDATAPOOL>, 1>,
-        //     mut ahrs_state_sender: rtic_sync::channel::Sender<'static, AhrsState, 1>,
-        // );
-
         #[task(binds = OTG_FS, shared = [usb_dev, serial], priority = 1)]
         fn otg_fs_irq(cx: otg_fs_irq::Context);
-
-        #[task(priority = 1)]
-        async fn blink_task(cx: blink_task::Context);
-
     }
 }
