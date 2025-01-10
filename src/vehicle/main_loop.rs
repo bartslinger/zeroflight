@@ -1,14 +1,22 @@
-use crate::common::{ActuatorCommands, AhrsState, ImuData, RcState, Update};
+use crate::app::Mono;
+use crate::common::{ActuatorCommands, ImuData, OutputCommand, RcState, Update, PI};
 use crate::vehicle::ahrs::Ahrs;
-use crate::vehicle::radio::radio_mapping;
+use crate::vehicle::attitude_control::{AttitudeController, ControllerOutput};
+use crate::vehicle::mixing::output_mixing;
+use crate::vehicle::modes::Mode;
+use crate::vehicle::radio::{radio_mapping, ThreePositionSwitch};
 
 pub struct MainLoopState {
     ahrs: Ahrs,
+    attitude_controller: AttitudeController,
 }
 
 impl Default for MainLoopState {
     fn default() -> Self {
-        MainLoopState { ahrs: Ahrs::new() }
+        MainLoopState {
+            ahrs: Ahrs::new(),
+            attitude_controller: AttitudeController::new(),
+        }
     }
 }
 
@@ -28,19 +36,107 @@ impl Default for MainLoopState {
 ///
 pub fn main_loop(
     state: &mut MainLoopState,
+    mode: &mut Mode,
     imu_update: &ImuData,
     rc: &Update<RcState>,
 ) -> ActuatorCommands {
-    // Update AHRS based on IMU data
-    let ahrs_state = state.ahrs.imu_update(imu_update);
+    use rtic_monotonics::Monotonic;
+    let now = Mono::now();
 
     // Parse RC input
-    let radio = radio_mapping(rc.value());
+    let rc_state = rc.timestamped_value();
+    let rc_command = radio_mapping(&rc_state.value);
+
+    // Activate failsafe if armed and no RC signal for 500ms
+    let rc_timed_out = now
+        .checked_duration_since(rc_state.timestamp)
+        .map(|dt| dt.to_millis() > 500)
+        .unwrap_or(true);
+    if rc_command.armed && rc_timed_out {
+        *mode = Mode::Failsafe;
+    }
+
+    // Update AHRS based on IMU data
+    if rc_command.ahrs_reset_switch {
+        state.attitude_controller.reset();
+        state.ahrs.reset();
+    }
+    let ahrs_state = state.ahrs.imu_update(imu_update);
 
     // Update (flight) mode
+    *mode = match rc_command.mode_switch {
+        ThreePositionSwitch::Low => Mode::Stabilized,
+        ThreePositionSwitch::Middle => Mode::Acro,
+        ThreePositionSwitch::High => Mode::Manual,
+    };
 
-    // Run attitude controller
+    // Run controller
+    let output_command = match mode {
+        Mode::Manual => OutputCommand {
+            armed: rc_command.armed,
+            roll: rc_command.roll,
+            pitch: rc_command.pitch,
+            throttle: rc_command.throttle,
+            yaw: rc_command.yaw,
+        },
+        Mode::Stabilized => {
+            let pitch_offset = if rc_command.pitch_offset > 0.0 {
+                -rc_command.pitch_offset
+            } else {
+                0.0
+            };
+            let roll_setpoint = rc_command.roll * 45.0 * PI / 180.0;
+            let pitch_setpoint = (rc_command.pitch + pitch_offset) * -30.0 * PI / 180.0;
+            let pitch_level_setpoint = 2.0 * PI / 180.0; // 2 degrees pitch up by default
+            let ControllerOutput { roll, pitch } = state.attitude_controller.update(
+                ahrs_state,
+                roll_setpoint,
+                pitch_level_setpoint + pitch_setpoint,
+                rc_command.armed,
+            );
+            OutputCommand {
+                armed: rc_command.armed,
+                roll,
+                pitch,
+                throttle: rc_command.throttle,
+                yaw: rc_command.yaw,
+            }
+        }
+        Mode::Acro => {
+            // 180deg/s roll, 90 deg/s pitch
+            let roll_rate_setpoint = rc_command.roll * 180.0 * PI / 180.0;
+            let pitch_rate_setpoint = rc_command.pitch * -90.0 * PI / 180.0;
+
+            let ControllerOutput { roll, pitch } = state.attitude_controller.stabilize_rates(
+                ahrs_state,
+                roll_rate_setpoint,
+                pitch_rate_setpoint,
+                rc_command.armed,
+            );
+            OutputCommand {
+                armed: rc_command.armed,
+                roll,
+                pitch,
+                throttle: rc_command.throttle,
+                yaw: rc_command.yaw,
+            }
+        }
+        Mode::Failsafe => {
+            let ControllerOutput { roll, pitch } =
+                state.attitude_controller.update(ahrs_state, 0.0, 0.0, true);
+            OutputCommand {
+                armed: false,
+                roll,
+                pitch,
+                throttle: 0.0,
+                yaw: 0.0,
+            }
+        }
+    };
+
+    // Mix and scale outputs
+    let actuator_commands = output_mixing(&output_command);
 
     // Publish commands
-    todo!()
+    actuator_commands
 }

@@ -1,6 +1,5 @@
 mod ahrs;
 pub mod attitude_control;
-pub mod control_logic;
 mod main_loop;
 pub mod mixing;
 pub mod modes;

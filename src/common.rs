@@ -1,3 +1,6 @@
+use crate::app::Mono;
+use rtic_monotonics::fugit::Instant;
+
 pub const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 pub struct OutputCommand {
@@ -40,23 +43,57 @@ pub struct AhrsState {
     pub _acceleration: (f32, f32, f32),
 }
 
+pub struct TimestampedValue<T> {
+    pub timestamp: Instant<u32, 1, 1000>,
+    pub value: T,
+}
+
+impl<T> TimestampedValue<T> {
+    pub fn new(inner: T) -> Self {
+        use rtic_monotonics::Monotonic;
+        TimestampedValue {
+            timestamp: Mono::now(),
+            value: inner,
+        }
+    }
+}
+
 pub enum Update<T> {
-    Unchanged(T),
-    Updated(T),
+    Unchanged(TimestampedValue<T>),
+    Updated(TimestampedValue<T>),
 }
 
 impl<T> Update<T> {
-    pub fn value(&self) -> &T {
+    pub fn new(initial_value: T) -> Self {
+        Update::Unchanged(TimestampedValue::new(initial_value))
+    }
+
+    pub fn update(&mut self, value: T) {
+        use rtic_monotonics::Monotonic;
+        *self = Update::Updated(TimestampedValue {
+            value: value,
+            timestamp: Mono::now(),
+        });
+    }
+
+    pub fn timestamped_value(&self) -> &TimestampedValue<T> {
         match self {
             Update::Unchanged(data) => data,
             Update::Updated(data) => data,
         }
     }
 
+    // pub fn value(&self) -> &T {
+    //     match self {
+    //         Update::Unchanged(data) => &data.value,
+    //         Update::Updated(data) => &data.value,
+    //     }
+    // }
+
     pub fn updated(&self) -> Option<&T> {
         match self {
             Update::Unchanged(_) => None,
-            Update::Updated(data) => Some(data),
+            Update::Updated(data) => Some(&data.value),
         }
     }
 }

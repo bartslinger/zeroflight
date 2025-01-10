@@ -39,7 +39,11 @@ impl Ahrs {
         &self.state
     }
 
-    pub fn state(&self) -> &AhrsState {
-        &self.state
+    pub fn reset(&mut self) {
+        self.dcmimu = DCMIMU::new();
     }
+
+    // pub fn state(&self) -> &AhrsState {
+    //     &self.state
+    // }
 }
