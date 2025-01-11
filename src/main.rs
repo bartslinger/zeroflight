@@ -8,14 +8,25 @@ use embassy_stm32::{gpio, spi, Config};
 use embassy_time::Timer;
 
 use embassy_executor::{Executor, InterruptExecutor, Spawner};
+use embassy_stm32::gpio::OutputType;
 use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
+use embassy_stm32::mode::Async;
+use embassy_stm32::peripherals::TIM8;
 use embassy_stm32::time::Hertz;
+use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode};
+use embassy_stm32::timer::simple_pwm::PwmPin;
+use embassy_stm32::timer::Channel;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::watch::Watch;
 use static_cell::StaticCell;
 
 use {defmt_rtt as _, panic_probe as _};
+
+// struct PwmOutputs {
+//     s1: SimplePwmChannel<'static, TIM4>,
+//     s2: SimplePwmChannel<'static, TIM4>,
+// }
 
 static EXECUTOR_MED: InterruptExecutor = InterruptExecutor::new();
 static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
@@ -48,18 +59,85 @@ async fn main(_spawner: Spawner) {
         config.rcc.mux.clk48sel = mux::Clk48sel::PLL1_Q;
     }
     let p = embassy_stm32::init(config);
-    defmt::info!("initialized");
+    defmt::info!("initializing");
 
+    let cs = gpio::Output::new(p.PA4, gpio::Level::High, gpio::Speed::VeryHigh);
+
+    let mut spi_config = spi::Config::default();
+    spi_config.frequency = Hertz(300_000);
+    spi_config.mode = spi::MODE_3;
+    let spi = embassy_stm32::spi::Spi::new(
+        p.SPI1, p.PA5, p.PA7, p.PA6, p.DMA2_CH3, p.DMA2_CH0, spi_config,
+    );
+
+    // Initialize PWM
+    let _pwm_pin = PwmPin::<TIM8, _>::new_ch3(p.PC8, OutputType::PushPull);
+    let timer = embassy_stm32::timer::low_level::Timer::new(p.TIM8);
+    timer.set_counting_mode(CountingMode::EdgeAlignedUp);
+
+    // set frequency part
+    {
+        let timer_f = timer.get_clock_frequency();
+        // this will be 1_680_000:
+        let pclk_ticks_per_timer_period = (timer_f / Hertz(50)) as u64;
+        // If we **choose ourselves** to set psc to 83:
+        // 1_680_000 / (83 + 1) = 20_000
+        let psc: u16 = ((pclk_ticks_per_timer_period - 1) / 20_000) as u16;
+        // this will be 20_000:
+        let divide_by = pclk_ticks_per_timer_period / (u64::from(psc) + 1);
+        // assume 16-bits
+        let arr = defmt::unwrap!(u16::try_from(divide_by - 1));
+        let regs = timer.regs_core();
+        regs.psc().write_value(psc);
+        regs.arr().write(|r| r.set_arr(arr));
+
+        // I don't think this is really necessary:
+        regs.cr1()
+            .modify(|r| r.set_urs(embassy_stm32::pac::timer::vals::Urs::COUNTER_ONLY));
+        regs.egr().write(|r| r.set_ug(true));
+        regs.cr1()
+            .modify(|r| r.set_urs(embassy_stm32::pac::timer::vals::Urs::ANY_EVENT));
+    }
+
+    timer.enable_outputs();
+    timer.start();
+    timer.set_output_compare_mode(Channel::Ch3, OutputCompareMode::PwmMode1);
+    timer.set_output_compare_preload(Channel::Ch3, true);
+
+    // enable ch3
+    timer.set_compare_value(Channel::Ch3, 2000);
+    timer.enable_channel(Channel::Ch3, true);
+
+    let max_duty = timer.get_max_compare_value();
+    defmt::info!("clock freq: {}", max_duty);
+
+    // let pwm_tim4 = SimplePwm::new(
+    //     tim4,
+    //     Some(PwmPin::new_ch1(p.PB6, OutputType::PushPull)),
+    //     Some(PwmPin::new_ch2(p.PB7, OutputType::PushPull)),
+    //     None,
+    //     None,
+    //     Hertz(168),
+    //     CountingMode::default(),
+    // );
+    // let max_duty = pwm_tim4.get_max_duty();
+    // let pwm_tim4 = pwm_tim4.split();
+    //
+    // let pwm_outputs = PwmOutputs {
+    //     s1: pwm_tim4.ch2,
+    //     s2: pwm_tim4.ch1,
+    // };
+
+    // whyyyy
     interrupt::OTG_HS_EP1_OUT.set_priority(Priority::P1);
     let spawner = EXECUTOR_MED.start(interrupt::OTG_HS_EP1_OUT);
     if let Err(e) = spawner.spawn(run_med()) {
         defmt::error!("Failed to spawn med task: {}", e as u32);
     }
-    defmt::info!("whatsup");
 
     let executor = EXECUTOR_LOW.init(Executor::new());
     executor.run(|spawner| {
-        spawner.spawn(run_low(p)).unwrap();
+        spawner.spawn(run_low(spi, cs)).unwrap();
         spawner.spawn(idle()).unwrap();
     });
 }
@@ -78,7 +156,7 @@ async fn idle() {
 }
 
 #[embassy_executor::task]
-async fn run_med() {
+async fn run_med(/*pwm_outputs: PwmOutputs*/) {
     let mut receiver = WHO_AM_I_RESPONSE_CHANNEL.receiver().unwrap();
     loop {
         defmt::info!("    [med] waiting for byte...");
@@ -96,17 +174,9 @@ async fn run_med() {
 }
 
 #[embassy_executor::task]
-async fn run_low(p: embassy_stm32::Peripherals) {
+async fn run_low(mut spi: spi::Spi<'static, Async>, mut cs: gpio::Output<'static>) {
     let sender = WHO_AM_I_RESPONSE_CHANNEL.sender();
 
-    let mut cs = gpio::Output::new(p.PA4, gpio::Level::High, gpio::Speed::VeryHigh);
-
-    let mut spi_config = spi::Config::default();
-    spi_config.frequency = Hertz(300_000);
-    spi_config.mode = spi::MODE_3;
-    let mut spi = embassy_stm32::spi::Spi::new(
-        p.SPI1, p.PA5, p.PA7, p.PA6, p.DMA2_CH3, p.DMA2_CH0, spi_config,
-    );
     let mut count: u8 = 0;
     loop {
         // Do a SPI whoami
