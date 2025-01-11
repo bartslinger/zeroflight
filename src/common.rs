@@ -63,12 +63,12 @@ impl<T> TimestampedValue<T> {
     }
 }
 
-pub struct MaybeUpdatedValue<T> {
+pub struct MaybeUpdated<T> {
     inner: TimestampedValue<T>,
     updated: bool,
 }
 
-impl<T> MaybeUpdatedValue<T> {
+impl<T> MaybeUpdated<T> {
     pub fn new(initial_value: T) -> Self {
         Self {
             inner: TimestampedValue::new(initial_value),

@@ -1,4 +1,4 @@
-use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdatedValue, RcState};
+use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdated, RcState};
 use crate::vehicle::{main_loop, MainState};
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
@@ -14,13 +14,13 @@ pub(crate) async fn control_task(
     let dwt = cx.local.dwt;
     use futures::{select_biased, FutureExt};
 
-    let mut rc_state = MaybeUpdatedValue::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let mut rc_state = MaybeUpdated::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    let mut imu_data = MaybeUpdatedValue::new(ImuData {
+    let mut imu_data = MaybeUpdated::new(ImuData {
         acceleration: (0.0, 0.0, 0.0),
         rates: (0.0, 0.0, 0.0),
     });
-    let mut ahrs_state = MaybeUpdatedValue::new(AhrsState::default());
+    let mut ahrs_state = MaybeUpdated::new(AhrsState::default());
 
     let mut main_loop_state = MainState::default();
     let mut imu_forward_counter: u32 = 0;

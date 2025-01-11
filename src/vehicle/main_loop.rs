@@ -4,8 +4,7 @@ use super::modes::Mode;
 use super::radio::{radio_mapping, RcCommand, ThreePositionSwitch};
 use crate::app::Mono;
 use crate::common::{
-    ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdatedValue, OutputCommand, RcState,
-    TimestampedValue, PI,
+    ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdated, OutputCommand, RcState, TimestampedValue, PI,
 };
 use rtic_monotonics::Monotonic;
 
@@ -50,8 +49,8 @@ impl Default for MainState {
 pub fn main_loop(
     state: &mut MainState,
     imu_data: &ImuData,
-    ahrs_state: &mut MaybeUpdatedValue<AhrsState>,
-    rc_state: &mut MaybeUpdatedValue<RcState>,
+    ahrs_state: &mut MaybeUpdated<AhrsState>,
+    rc_state: &mut MaybeUpdated<RcState>,
     dt: f32,
 ) -> ActuatorPwmCommands {
     let now = Mono::now();
