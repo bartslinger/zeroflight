@@ -7,6 +7,7 @@
 mod drivers;
 mod tasks;
 
+mod common;
 use defmt::unwrap;
 use embassy_stm32::{gpio, spi, Config};
 
@@ -23,6 +24,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::watch::Watch;
 use static_cell::StaticCell;
 
+use crate::common::ImuData;
 use crate::drivers::icm42688p;
 use crate::tasks::run_fast_imu_task;
 use {defmt_rtt as _, panic_probe as _};
@@ -39,7 +41,7 @@ unsafe fn OTG_HS_EP1_OUT() {
 
 static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
-static WHO_AM_I_RESPONSE_CHANNEL: Watch<CriticalSectionRawMutex, u8, 64> = Watch::new();
+static IMU_DATA_CHANNEL: Watch<CriticalSectionRawMutex, ImuData, 1> = Watch::new();
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -165,11 +167,15 @@ async fn idle() {
 
 #[embassy_executor::task]
 async fn run_low() {
-    let mut receiver = WHO_AM_I_RESPONSE_CHANNEL.receiver().unwrap();
+    let mut receiver = IMU_DATA_CHANNEL.receiver().unwrap();
     loop {
-        defmt::info!("[low] waiting for byte...");
-        let incoming_byte = receiver.changed().await;
-        defmt::info!("[low] Received byte: {:02x}!", incoming_byte,);
+        let imu_data = receiver.changed().await;
+        defmt::info!(
+            "[low] Received IMU: {} {} {}",
+            imu_data.rates.0,
+            imu_data.rates.1,
+            imu_data.rates.2
+        );
     }
 }
 // ---------------------------------------------- RTIC below ---------------------------------------

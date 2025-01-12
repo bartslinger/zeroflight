@@ -129,3 +129,28 @@ pub async fn init(
                                                         // min 200us sleep recommended
     Timer::after_micros(300).await;
 }
+
+pub async fn get_fifo_count(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+) -> u16 {
+    let mut buf = [0x2E | 0x80, 0x00, 0x00];
+    spi_dev.transfer_in_place(&mut buf).await.ok();
+    u16::from_be_bytes([buf[1], buf[2]])
+}
+
+pub async fn get_fifo_sample(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+) -> [u8; 17] {
+    let mut buf: [u8; 17] = [0x00; 17];
+    buf[0] = 0x30 | 0x80;
+    spi_dev.transfer_in_place(&mut buf).await.ok();
+    buf
+}
