@@ -4,6 +4,9 @@
 // #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
+mod tasks;
+
+use defmt::unwrap;
 use embassy_stm32::{gpio, spi, Config};
 use embassy_time::Timer;
 
@@ -21,14 +24,19 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::watch::Watch;
 use static_cell::StaticCell;
 
+use crate::tasks::run_fast_imu_task;
 use {defmt_rtt as _, panic_probe as _};
-
 // struct PwmOutputs {
 //     s1: SimplePwmChannel<'static, TIM4>,
 //     s2: SimplePwmChannel<'static, TIM4>,
 // }
 
-static EXECUTOR_MED: InterruptExecutor = InterruptExecutor::new();
+static EXECUTOR_FAST_IMU: InterruptExecutor = InterruptExecutor::new();
+#[interrupt]
+unsafe fn OTG_HS_EP1_OUT() {
+    EXECUTOR_FAST_IMU.on_interrupt();
+}
+
 static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
 static WHO_AM_I_RESPONSE_CHANNEL: Watch<CriticalSectionRawMutex, u8, 64> = Watch::new();
@@ -69,6 +77,10 @@ async fn main(_spawner: Spawner) {
     let spi = embassy_stm32::spi::Spi::new(
         p.SPI1, p.PA5, p.PA7, p.PA6, p.DMA2_CH3, p.DMA2_CH0, spi_config,
     );
+
+    let spi_dev = unwrap!(embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(
+        spi, cs
+    ));
 
     // Initialize PWM
     let _pwm_pin = PwmPin::<TIM8, _>::new_ch3(p.PC8, OutputType::PushPull);
@@ -128,23 +140,17 @@ async fn main(_spawner: Spawner) {
     //     s2: pwm_tim4.ch1,
     // };
 
-    // whyyyy
-    interrupt::OTG_HS_EP1_OUT.set_priority(Priority::P1);
-    let spawner = EXECUTOR_MED.start(interrupt::OTG_HS_EP1_OUT);
-    if let Err(e) = spawner.spawn(run_med()) {
+    interrupt::OTG_HS_EP1_OUT.set_priority(Priority::P14);
+    let spawner = EXECUTOR_FAST_IMU.start(interrupt::OTG_HS_EP1_OUT);
+    if let Err(e) = spawner.spawn(run_fast_imu_task(spi_dev)) {
         defmt::error!("Failed to spawn med task: {}", e as u32);
     }
 
     let executor = EXECUTOR_LOW.init(Executor::new());
     executor.run(|spawner| {
-        spawner.spawn(run_low(spi, cs)).unwrap();
+        spawner.spawn(run_low()).unwrap();
         spawner.spawn(idle()).unwrap();
     });
-}
-
-#[interrupt]
-unsafe fn OTG_HS_EP1_OUT() {
-    EXECUTOR_MED.on_interrupt();
 }
 
 #[embassy_executor::task]
@@ -156,42 +162,12 @@ async fn idle() {
 }
 
 #[embassy_executor::task]
-async fn run_med(/*pwm_outputs: PwmOutputs*/) {
+async fn run_low() {
     let mut receiver = WHO_AM_I_RESPONSE_CHANNEL.receiver().unwrap();
     loop {
-        defmt::info!("    [med] waiting for byte...");
+        defmt::info!("[low] waiting for byte...");
         let incoming_byte = receiver.changed().await;
-        let dmaprio = interrupt::DMA2_STREAM0.get_priority();
-        defmt::info!(
-            "    [med] Received byte: {:02x}! (prio {})",
-            incoming_byte,
-            dmaprio
-        );
-        Timer::after_micros(50).await;
-        // defmt::info!("    [med] block...");
-        // embassy_time::block_for(embassy_time::Duration::from_secs(2)); // ~2 seconds
-    }
-}
-
-#[embassy_executor::task]
-async fn run_low(mut spi: spi::Spi<'static, Async>, mut cs: gpio::Output<'static>) {
-    let sender = WHO_AM_I_RESPONSE_CHANNEL.sender();
-
-    let mut count: u8 = 0;
-    loop {
-        // Do a SPI whoami
-        let reg = 0x75;
-        let mut buf: [u8; 2] = [reg | 0x80, 0x00];
-        defmt::info!("[low] transfer start");
-        cs.set_low();
-        spi.transfer_in_place(&mut buf).await.unwrap();
-        cs.set_high();
-        defmt::info!("[low] response: {:02x}", buf[1]);
-        sender.send(count);
-        defmt::info!("[low] byte was sent");
-        count += 1;
-
-        Timer::after_millis(1000).await;
+        defmt::info!("[low] Received byte: {:02x}!", incoming_byte,);
     }
 }
 // ---------------------------------------------- RTIC below ---------------------------------------
