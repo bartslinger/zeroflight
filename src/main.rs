@@ -4,17 +4,16 @@
 // #![deny(unsafe_code)]
 //#![deny(missing_docs)]
 
+mod drivers;
 mod tasks;
 
 use defmt::unwrap;
 use embassy_stm32::{gpio, spi, Config};
-use embassy_time::Timer;
 
 use embassy_executor::{Executor, InterruptExecutor, Spawner};
 use embassy_stm32::gpio::OutputType;
 use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
-use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::TIM8;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode};
@@ -24,6 +23,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::watch::Watch;
 use static_cell::StaticCell;
 
+use crate::drivers::icm42688p;
 use crate::tasks::run_fast_imu_task;
 use {defmt_rtt as _, panic_probe as _};
 // struct PwmOutputs {
@@ -78,9 +78,11 @@ async fn main(_spawner: Spawner) {
         p.SPI1, p.PA5, p.PA7, p.PA6, p.DMA2_CH3, p.DMA2_CH0, spi_config,
     );
 
-    let spi_dev = unwrap!(embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(
+    let mut spi_dev = unwrap!(embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(
         spi, cs
     ));
+
+    icm42688p::init(&mut spi_dev).await;
 
     // Initialize PWM
     let _pwm_pin = PwmPin::<TIM8, _>::new_ch3(p.PC8, OutputType::PushPull);

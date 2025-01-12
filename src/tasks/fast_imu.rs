@@ -1,5 +1,4 @@
 use crate::WHO_AM_I_RESPONSE_CHANNEL;
-use defmt::unwrap;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
 use embassy_stm32::spi::Spi;
