@@ -78,6 +78,7 @@ fn parse_imu_data(buf: &[u8]) -> ImuData {
     let _timestamp: u16 = (raw_timestamp as u32 * 32 / 30) as u16;
 
     ImuData {
+        timestamp_unscaled: raw_timestamp,
         acceleration: (acc_x, acc_y, acc_z),
         rates: (gyro_x, gyro_y, gyro_z),
     }

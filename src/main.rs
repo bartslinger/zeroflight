@@ -8,6 +8,8 @@ mod drivers;
 mod tasks;
 
 mod common;
+
+use core::ops::Sub;
 use defmt::unwrap;
 use embassy_stm32::{gpio, spi, Config};
 
@@ -168,14 +170,21 @@ async fn idle() {
 #[embassy_executor::task]
 async fn run_low() {
     let mut receiver = IMU_DATA_CHANNEL.receiver().unwrap();
+    let mut previous_timestamp_unscaled: u16 = 0;
     loop {
         let imu_data = receiver.changed().await;
-        defmt::info!(
-            "[low] Received IMU: {} {} {}",
-            imu_data.rates.0,
-            imu_data.rates.1,
-            imu_data.rates.2
-        );
+        let diff = imu_data
+            .timestamp_unscaled
+            .wrapping_sub(previous_timestamp_unscaled);
+        if imu_data.timestamp_unscaled < previous_timestamp_unscaled {
+            defmt::info!(
+                "[low] Received IMU: {}\t->\t{}\t..\t{}",
+                previous_timestamp_unscaled,
+                imu_data.timestamp_unscaled,
+                diff as u32 * 32 / 30,
+            );
+        }
+        previous_timestamp_unscaled = imu_data.timestamp_unscaled;
     }
 }
 // ---------------------------------------------- RTIC below ---------------------------------------
