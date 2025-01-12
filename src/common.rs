@@ -22,15 +22,16 @@ pub const PI: f32 = 3.14159265358979323846264338327950288_f32;
 
 #[derive(Clone, Copy)]
 pub struct ImuData {
+    #[allow(unused)]
     pub timestamp_unscaled: u16,
     pub acceleration: (f32, f32, f32),
     pub rates: (f32, f32, f32),
 }
 
-// #[derive(Copy, Clone, Default)]
-// pub struct AhrsState {
-//     pub angles: dcmimu::EulerAngles,
-// }
+#[derive(Copy, Clone, Default)]
+pub struct AhrsState {
+    pub angles: dcmimu::EulerAngles,
+}
 
 // pub struct TimestampedValue<T> {
 //     pub timestamp: Instant<u32, 1, 1_000>,

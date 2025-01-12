@@ -4,7 +4,6 @@ use embassy_stm32::gpio::Output;
 use embassy_stm32::mode::Async;
 use embassy_stm32::spi::Spi;
 use embassy_time::{Duration, Instant, Timer};
-use embedded_hal_async::spi::SpiDevice;
 use embedded_hal_bus::spi::NoDelay;
 
 #[embassy_executor::task]
@@ -16,8 +15,8 @@ pub async fn run_fast_imu_task(
     >,
 ) {
     let sender = IMU_DATA_CHANNEL.sender();
-    let mut hit: u32 = 0;
-    let mut miss: u32 = 0;
+    // let mut hit: u32 = 0;
+    // let mut miss: u32 = 0;
 
     loop {
         // get fifo count
@@ -25,9 +24,9 @@ pub async fn run_fast_imu_task(
         let fifo_count = crate::icm42688p::get_fifo_count(&mut spi_dev).await;
 
         if fifo_count > 0 {
-            hit += 1;
+            // hit += 1;
             if fifo_count > 1 {
-                defmt::info!("    [high] fifo count: {}", fifo_count);
+                defmt::warn!("    [high] fifo count: {}", fifo_count);
             }
             // if hit % 100 == 0 {
             //     defmt::info!(
@@ -41,7 +40,9 @@ pub async fn run_fast_imu_task(
             // get imu data
             let imu_data = crate::icm42688p::get_fifo_sample(&mut spi_dev).await;
             let imu_data = parse_imu_data(&imu_data[1..17]);
-            sender.send(imu_data);
+            if let Err(_) = sender.try_send(imu_data) {
+                defmt::error!("    [high] failed to send imu data: buffer full");
+            }
 
             if fifo_count == 1 {
                 // might just as well sleep now
@@ -54,7 +55,7 @@ pub async fn run_fast_imu_task(
             }
             // defmt::info!("    [high] imu data: {:?}", imu_data);
         } else {
-            miss += 1;
+            // miss += 1;
         }
     }
 }

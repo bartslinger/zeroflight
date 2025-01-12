@@ -7,11 +7,11 @@
 mod drivers;
 mod tasks;
 
+mod board;
 mod common;
 
-use core::ops::Sub;
 use defmt::unwrap;
-use embassy_stm32::{gpio, spi, Config};
+use embassy_stm32::{gpio, spi};
 
 use embassy_executor::{Executor, InterruptExecutor, Spawner};
 use embassy_stm32::gpio::OutputType;
@@ -23,12 +23,12 @@ use embassy_stm32::timer::low_level::{CountingMode, OutputCompareMode};
 use embassy_stm32::timer::simple_pwm::PwmPin;
 use embassy_stm32::timer::Channel;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::watch::Watch;
 use static_cell::StaticCell;
 
+use crate::board::clock_config::get_clock_config;
 use crate::common::ImuData;
 use crate::drivers::icm42688p;
-use crate::tasks::run_fast_imu_task;
+use crate::tasks::{run_ahrs_task, run_fast_imu_task};
 use {defmt_rtt as _, panic_probe as _};
 // struct PwmOutputs {
 //     s1: SimplePwmChannel<'static, TIM4>,
@@ -41,35 +41,24 @@ unsafe fn OTG_HS_EP1_OUT() {
     EXECUTOR_FAST_IMU.on_interrupt();
 }
 
-static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
+static EXECUTOR_STATE_ESTIMATOR: InterruptExecutor = InterruptExecutor::new();
+#[interrupt]
+unsafe fn OTG_HS_EP1_IN() {
+    EXECUTOR_STATE_ESTIMATOR.on_interrupt();
+}
 
-static IMU_DATA_CHANNEL: Watch<CriticalSectionRawMutex, ImuData, 1> = Watch::new();
+static EXECUTOR_LOWEST: StaticCell<Executor> = StaticCell::new();
+
+// I think capacity 2 should be sufficient
+static IMU_DATA_CHANNEL: embassy_sync::channel::Channel<CriticalSectionRawMutex, ImuData, 3> =
+    embassy_sync::channel::Channel::new();
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     defmt::info!("Hello, world");
 
-    let mut config = Config::default();
-    {
-        use embassy_stm32::rcc::*;
-        config.rcc.hse = Some(Hse {
-            freq: Hertz(8_000_000),
-            mode: HseMode::Oscillator,
-        });
-        config.rcc.pll_src = PllSource::HSE;
-        config.rcc.pll = Some(Pll {
-            prediv: PllPreDiv::DIV4,
-            mul: PllMul::MUL168,
-            divp: Some(PllPDiv::DIV2), // 8mhz / 4 * 168 / 2 = 168Mhz.
-            divq: Some(PllQDiv::DIV7), // 8mhz / 4 * 168 / 7 = 48Mhz.
-            divr: None,
-        });
-        config.rcc.ahb_pre = AHBPrescaler::DIV1;
-        config.rcc.apb1_pre = APBPrescaler::DIV4;
-        config.rcc.apb2_pre = APBPrescaler::DIV2;
-        config.rcc.sys = Sysclk::PLL1_P;
-        config.rcc.mux.clk48sel = mux::Clk48sel::PLL1_Q;
-    }
+    // Get config in separate function because RustRover f*cks up syntax highlighting
+    let config = get_clock_config();
     let p = embassy_stm32::init(config);
     defmt::info!("initializing");
 
@@ -146,15 +135,20 @@ async fn main(_spawner: Spawner) {
     //     s2: pwm_tim4.ch1,
     // };
 
-    interrupt::OTG_HS_EP1_OUT.set_priority(Priority::P14);
+    interrupt::OTG_HS_EP1_OUT.set_priority(Priority::P1);
     let spawner = EXECUTOR_FAST_IMU.start(interrupt::OTG_HS_EP1_OUT);
     if let Err(e) = spawner.spawn(run_fast_imu_task(spi_dev)) {
         defmt::error!("Failed to spawn med task: {}", e as u32);
     }
 
-    let executor = EXECUTOR_LOW.init(Executor::new());
+    interrupt::OTG_HS_EP1_IN.set_priority(Priority::P2);
+    let spawner = EXECUTOR_STATE_ESTIMATOR.start(interrupt::OTG_HS_EP1_IN);
+    if let Err(e) = spawner.spawn(run_ahrs_task()) {
+        defmt::error!("Failed to spawn low task: {}", e as u32);
+    }
+
+    let executor = EXECUTOR_LOWEST.init(Executor::new());
     executor.run(|spawner| {
-        spawner.spawn(run_low()).unwrap();
         spawner.spawn(idle()).unwrap();
     });
 }
@@ -167,26 +161,6 @@ async fn idle() {
     }
 }
 
-#[embassy_executor::task]
-async fn run_low() {
-    let mut receiver = IMU_DATA_CHANNEL.receiver().unwrap();
-    let mut previous_timestamp_unscaled: u16 = 0;
-    loop {
-        let imu_data = receiver.changed().await;
-        let diff = imu_data
-            .timestamp_unscaled
-            .wrapping_sub(previous_timestamp_unscaled);
-        if imu_data.timestamp_unscaled < previous_timestamp_unscaled {
-            defmt::info!(
-                "[low] Received IMU: {}\t->\t{}\t..\t{}",
-                previous_timestamp_unscaled,
-                imu_data.timestamp_unscaled,
-                diff as u32 * 32 / 30,
-            );
-        }
-        previous_timestamp_unscaled = imu_data.timestamp_unscaled;
-    }
-}
 // ---------------------------------------------- RTIC below ---------------------------------------
 // Declare a pool
 // box_pool!(IMUDATAPOOL: ImuData);
