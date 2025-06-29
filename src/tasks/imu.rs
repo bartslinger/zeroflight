@@ -7,7 +7,7 @@ use embassy_time::{Duration, Instant, Timer};
 use embedded_hal_bus::spi::NoDelay;
 
 #[embassy_executor::task]
-pub async fn run_fast_imu_task(
+pub async fn run_fast_io_imu_task(
     mut spi_dev: embedded_hal_bus::spi::ExclusiveDevice<
         Spi<'static, Async>,
         Output<'static>,

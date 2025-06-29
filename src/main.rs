@@ -9,6 +9,7 @@ mod tasks;
 
 mod board;
 mod common;
+mod vehicle;
 
 use defmt::unwrap;
 use embassy_stm32::{gpio, spi};
@@ -28,17 +29,17 @@ use static_cell::StaticCell;
 use crate::board::clock_config::get_clock_config;
 use crate::common::ImuData;
 use crate::drivers::icm42688p;
-use crate::tasks::{run_ahrs_task, run_fast_imu_task};
+use crate::tasks::{run_ahrs_task, run_fast_io_crsf_task, run_fast_io_imu_task};
 use {defmt_rtt as _, panic_probe as _};
 // struct PwmOutputs {
 //     s1: SimplePwmChannel<'static, TIM4>,
 //     s2: SimplePwmChannel<'static, TIM4>,
 // }
 
-static EXECUTOR_FAST_IMU: InterruptExecutor = InterruptExecutor::new();
+static EXECUTOR_FAST_IO: InterruptExecutor = InterruptExecutor::new();
 #[interrupt]
 unsafe fn OTG_HS_EP1_OUT() {
-    EXECUTOR_FAST_IMU.on_interrupt();
+    EXECUTOR_FAST_IO.on_interrupt();
 }
 
 static EXECUTOR_STATE_ESTIMATOR: InterruptExecutor = InterruptExecutor::new();
@@ -118,26 +119,14 @@ async fn main(_spawner: Spawner) {
     let max_duty = timer.get_max_compare_value();
     defmt::info!("clock freq: {}", max_duty);
 
-    // let pwm_tim4 = SimplePwm::new(
-    //     tim4,
-    //     Some(PwmPin::new_ch1(p.PB6, OutputType::PushPull)),
-    //     Some(PwmPin::new_ch2(p.PB7, OutputType::PushPull)),
-    //     None,
-    //     None,
-    //     Hertz(168),
-    //     CountingMode::default(),
-    // );
-    // let max_duty = pwm_tim4.get_max_duty();
-    // let pwm_tim4 = pwm_tim4.split();
-    //
-    // let pwm_outputs = PwmOutputs {
-    //     s1: pwm_tim4.ch2,
-    //     s2: pwm_tim4.ch1,
-    // };
+    // UART for CRSF
 
     interrupt::OTG_HS_EP1_OUT.set_priority(Priority::P1);
-    let spawner = EXECUTOR_FAST_IMU.start(interrupt::OTG_HS_EP1_OUT);
-    if let Err(e) = spawner.spawn(run_fast_imu_task(spi_dev)) {
+    let spawner = EXECUTOR_FAST_IO.start(interrupt::OTG_HS_EP1_OUT);
+    if let Err(e) = spawner.spawn(run_fast_io_imu_task(spi_dev)) {
+        defmt::error!("Failed to spawn med task: {}", e as u32);
+    }
+    if let Err(e) = spawner.spawn(run_fast_io_crsf_task()) {
         defmt::error!("Failed to spawn med task: {}", e as u32);
     }
 

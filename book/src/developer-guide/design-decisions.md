@@ -1,5 +1,33 @@
 # Design Decisions
 
+## Task Priorities
+
+### PWM Output
+
+The PWM output task is the highest priority. This task has a timeout which can set failsafe values, to make sure the
+motors are turned off. What could be done (but is not the case now) is to directly use radio commands in case the
+vehicle task locks up and fails to publish PWM commands.
+
+### IMU and Radio Receiver
+
+Then there are high speed peripheral tasks, for the IMU and the radio receiver. These tasks share the same "fast_io"
+executor, because there is not a huge benefit from giving one of them the possibility to interrupt the other one. These
+tasks need to run fast because if the bytes are not taken quickly from the peripheral, it might loose data (I think).
+
+I previously did the CRSF parsing (so not the UART receiving part) in a lower priority task. However, it should be fine
+to do this here, because it is not very compute intensive. The next IMU sample might be delayed by fractions of
+microseconds because of that.
+
+### Vehicle logic
+
+Next is fast vehicle logic. This is stuff like attitude/rate control, flight modes, etc. It runs at 1000 Hz and is
+prioritized accordingly.
+
+### AHRS
+
+The attitude- and heading-reference system (AHRS) is compute intensive. A single calculation may take between 1.5 and 2
+ms. That would exceed the period of the 1000Hz loop and therefore it runs at a lower priority.
+
 ## Vehicle module
 
 The idea behind the vehicle module is that it contains the "business logic" of the flight controller. The code in this
