@@ -1,4 +1,4 @@
-use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdatedValue, RcState};
+use crate::common::{ActuatorPwmCommands, AhrsState, ImuData, MaybeUpdated, RcState};
 use crate::vehicle::{main_loop, MainState};
 use crate::IMUDATAPOOL;
 use heapless::pool::boxed::Box;
@@ -14,13 +14,13 @@ pub(crate) async fn control_task(
     let dwt = cx.local.dwt;
     use futures::{select_biased, FutureExt};
 
-    let mut rc_state = MaybeUpdatedValue::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let mut rc_state = MaybeUpdated::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    let mut imu_data = MaybeUpdatedValue::new(ImuData {
+    let mut imu_data = MaybeUpdated::new(ImuData {
         acceleration: (0.0, 0.0, 0.0),
         rates: (0.0, 0.0, 0.0),
     });
-    let mut ahrs_state = MaybeUpdatedValue::new(AhrsState::default());
+    let mut ahrs_state = MaybeUpdated::new(AhrsState::default());
 
     let mut main_loop_state = MainState::default();
     let mut imu_forward_counter: u32 = 0;
@@ -88,7 +88,7 @@ pub(crate) async fn control_task(
             } // TODO: Timeout? if no imu data, map rc directly to output?
         }
 
-        if let Some(imu_value) = imu_data.updated() {
+        if let Some(timestamped_imu_data) = imu_data.updated() {
             // Calculate loop delta for debugging
             let tick = dwt.cyccnt.read();
             if let Some(previous_tick) = previous_main_loop_tick {
@@ -122,7 +122,7 @@ pub(crate) async fn control_task(
             // Run the main loop
             let output = main_loop(
                 &mut main_loop_state,
-                imu_value,
+                timestamped_imu_data.value(),
                 &mut ahrs_state,
                 &mut rc_state,
                 0.001,

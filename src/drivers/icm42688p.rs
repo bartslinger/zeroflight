@@ -1,6 +1,9 @@
-use crate::boards::board::{
-    ImuCsPin, ImuDmaRxStream, ImuDmaRxTransfer, ImuDmaTxStream, ImuDmaTxTransfer, ImuSpiDev,
-};
+use embassy_stm32::gpio::Output;
+use embassy_stm32::mode::Async;
+use embassy_stm32::spi::Spi;
+use embassy_time::Timer;
+use embedded_hal_async::spi::SpiDevice;
+use embedded_hal_bus::spi::NoDelay;
 
 const REG_WHO_AM_I: u8 = 0x75;
 const REG_PWR_MGMT0: u8 = 0x4E;
@@ -20,172 +23,134 @@ const REG_ACCEL_CONFIG_STATIC2: u8 = 0x03;
 const REG_ACCEL_CONFIG_STATIC3: u8 = 0x04;
 const REG_ACCEL_CONFIG_STATIC4: u8 = 0x05;
 
-pub(crate) struct Icm42688p<SPIDEV, CS> {
-    spi: SPIDEV,
-    cs: CS,
+pub async fn read_register(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+    reg: u8,
+) -> u8 {
+    let mut buf = [reg | 0x80, 0x00];
+    spi_dev.transfer_in_place(&mut buf).await.ok();
+    buf[1]
 }
 
-impl<SPIDEV: embedded_hal::spi::SpiBus, CS: embedded_hal::digital::OutputPin>
-    Icm42688p<SPIDEV, CS>
-{
-    pub(crate) fn new(spi: SPIDEV, mut cs: CS) -> Self {
-        cs.set_high().ok();
-        Self { spi, cs }
-    }
-
-    pub(crate) fn init(&mut self, delay: &mut stm32f4xx_hal::timer::SysDelay) {
-        use embedded_hal::delay::DelayNs;
-        self.cs.set_low().ok();
-        delay.delay_us(10);
-
-        let whoami = self.read_register(REG_WHO_AM_I);
-        if whoami != 0x47 {
-            defmt::error!("IMU not found");
-            panic!("IMU not found");
-        }
-
-        // disable power on accel and gyro for configuration (see datasheet 12.9)
-        self.write_register(REG_PWR_MGMT0, 0x00);
-        delay.delay_us(10);
-        self.write_register(REG_FIFO_CONFIG, 0x80); // FIFO_CONFIG STOP-on-full
-        delay.delay_us(10);
-        self.write_register(REG_FIFO_CONFIG1, 0x07); // FIFO_CONFIG1 enable temp, accel, gyro
-        delay.delay_us(10);
-        self.write_register(REG_INTF_CONFIG0, 0xF0); // big Endian, count records, hold last sample
-        delay.delay_us(10);
-        self.write_register(REG_SIGNAL_PATH_RESET, 0x02); // flush the FIFO
-        delay.delay_us(10);
-        self.write_register(REG_GYRO_CONFIG0, 0x06); // gyro 1kHz ODR
-        delay.delay_us(10);
-        self.write_register(REG_ACCEL_CONFIG0, 0x06); // accel 1kHz ODR
-        delay.delay_us(10);
-
-        self.write_register(REG_REG_BANK_SEL, 1);
-        delay.delay_us(10);
-        let aaf_enable = self.read_register(REG_GYRO_CONFIG_STATIC2);
-        delay.delay_us(10);
-        self.write_register(REG_GYRO_CONFIG_STATIC2, aaf_enable & !0x03); // enable not and AAF
-        delay.delay_us(10);
-        self.write_register(REG_GYRO_CONFIG_STATIC3, 6); // 258Hz gyro bandwith
-        delay.delay_us(10);
-        self.write_register(REG_GYRO_CONFIG_STATIC4, 36); // 258Hz gyro bandwith
-        delay.delay_us(10);
-        self.write_register(
-            REG_GYRO_CONFIG_STATIC5,
-            (10 << 4) & 0xF0, /* | ((36 >> 8) & 0x0F) */
-        ); // 258Hz gyro bandwith
-        delay.delay_us(10);
-
-        self.write_register(REG_REG_BANK_SEL, 2);
-        delay.delay_us(10);
-        self.write_register(REG_ACCEL_CONFIG_STATIC2, 5 << 1); // 213Hz accel bandwith
-        delay.delay_us(10);
-        self.write_register(REG_ACCEL_CONFIG_STATIC3, 25); // 213Hz accel bandwith
-        delay.delay_us(10);
-        self.write_register(
-            REG_ACCEL_CONFIG_STATIC4,
-            (10 << 4) & 0xF0, /* | ((25 >> 8) & 0x0F) */
-        ); // 213Hz accel bandwith
-
-        self.write_register(REG_REG_BANK_SEL, 0);
-        delay.delay_us(10);
-
-        /*
-          From Ardupilot:
-          fix for the "stuck gyro" issue, which affects all IxM42xxx
-          sensors. This disables the AFSR feature which changes the
-          noise sensitivity with angular rate. When the switch happens
-          (at around 100 deg/sec) the gyro gets stuck for around 2ms,
-          producing constant output which causes a DC gyro bias
-        */
-        let v = self.read_register(REG_INTF_CONFIG1);
-        delay.delay_us(10);
-        self.write_register(REG_INTF_CONFIG1, (v & 0x3F) | 0x40);
-        delay.delay_us(10);
-
-        self.write_register(REG_PWR_MGMT0, 0x0F); // enable power on accel and gyro
-                                                  // min 200us sleep recommended
-        delay.delay_us(300);
-    }
-
-    fn read_register(&mut self, reg: u8) -> u8 {
-        self.cs.set_low().ok();
-        let mut buf = [reg | 0x80, 0x00];
-        self.spi
-            .transfer_in_place(&mut buf)
-            .expect("IMU write failed");
-        self.cs.set_high().ok();
-        buf[1]
-    }
-
-    fn write_register(&mut self, reg: u8, value: u8) {
-        self.cs.set_low().ok();
-        let mut buf = [reg, value];
-        self.spi
-            .transfer_in_place(&mut buf)
-            .expect("IMU write failed");
-        self.cs.set_high().ok();
-    }
-
-    pub(crate) fn release(self) -> (SPIDEV, CS) {
-        (self.spi, self.cs)
-    }
+pub async fn write_register(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+    reg: u8,
+    val: u8,
+) {
+    let mut buf = [reg, val];
+    spi_dev.transfer_in_place(&mut buf).await.ok();
 }
 
-pub(crate) struct Icm42688pDmaContext<TX, RX, CS> {
-    pub(crate) tx_transfer: TX,
-    pub(crate) rx_transfer: RX,
-    pub(crate) tx_buffer: Option<&'static mut [u8; 129]>,
-    pub(crate) rx_buffer: Option<&'static mut [u8; 129]>,
-    pub(crate) cs: CS,
+pub async fn init(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+) {
+    let whoami = read_register(spi_dev, REG_WHO_AM_I).await;
+    if whoami != 0x47 {
+        defmt::error!("IMU not found");
+        panic!("IMU not found");
+    }
+
+    // disable power on accel and gyro for configuration (see datasheet 12.9)
+    write_register(spi_dev, REG_PWR_MGMT0, 0x00).await;
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_FIFO_CONFIG, 0x80).await; // FIFO_CONFIG STOP-on-full
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_FIFO_CONFIG1, 0x07).await; // FIFO_CONFIG1 enable temp, accel, gyro
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_INTF_CONFIG0, 0xF0).await; // big Endian, count records, hold last sample
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_SIGNAL_PATH_RESET, 0x02).await; // flush the FIFO
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_GYRO_CONFIG0, 0x06).await; // gyro 1kHz ODR
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_ACCEL_CONFIG0, 0x06).await; // accel 1kHz ODR
+    Timer::after_micros(10).await;
+
+    write_register(spi_dev, REG_REG_BANK_SEL, 1).await;
+    Timer::after_micros(10).await;
+    let aaf_enable = read_register(spi_dev, REG_GYRO_CONFIG_STATIC2).await;
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_GYRO_CONFIG_STATIC2, aaf_enable & !0x03).await; // enable not and AAF
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_GYRO_CONFIG_STATIC3, 6).await; // 258Hz gyro bandwith
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_GYRO_CONFIG_STATIC4, 36).await; // 258Hz gyro bandwith
+    Timer::after_micros(10).await;
+    write_register(
+        spi_dev,
+        REG_GYRO_CONFIG_STATIC5,
+        (10 << 4) & 0xF0, /* | ((36 >> 8) & 0x0F) */
+    )
+    .await; // 258Hz gyro bandwith
+    Timer::after_micros(10).await;
+
+    write_register(spi_dev, REG_REG_BANK_SEL, 2).await;
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_ACCEL_CONFIG_STATIC2, 5 << 1).await; // 213Hz accel bandwith
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_ACCEL_CONFIG_STATIC3, 25).await; // 213Hz accel bandwith
+    Timer::after_micros(10).await;
+    write_register(
+        spi_dev,
+        REG_ACCEL_CONFIG_STATIC4,
+        (10 << 4) & 0xF0, /* | ((25 >> 8) & 0x0F) */
+    )
+    .await; // 213Hz accel bandwith
+
+    write_register(spi_dev, REG_REG_BANK_SEL, 0).await;
+    Timer::after_micros(10).await;
+
+    /*
+      From Ardupilot:
+      fix for the "stuck gyro" issue, which affects all IxM42xxx
+      sensors. This disables the AFSR feature which changes the
+      noise sensitivity with angular rate. When the switch happens
+      (at around 100 deg/sec) the gyro gets stuck for around 2ms,
+      producing constant output which causes a DC gyro bias
+    */
+    let v = read_register(spi_dev, REG_INTF_CONFIG1).await;
+    Timer::after_micros(10).await;
+    write_register(spi_dev, REG_INTF_CONFIG1, (v & 0x3F) | 0x40).await;
+    Timer::after_micros(10).await;
+
+    write_register(spi_dev, REG_PWR_MGMT0, 0x0F).await; // enable power on accel and gyro
+                                                        // min 200us sleep recommended
+    Timer::after_micros(300).await;
 }
 
-pub(crate) fn start_dma(
-    tx_buffer_1: &'static mut [u8; 129],
-    rx_buffer_1: &'static mut [u8; 129],
-    tx_buffer_2: &'static mut [u8; 129],
-    rx_buffer_2: &'static mut [u8; 129],
-    spi: ImuSpiDev,
-    tx_stream: ImuDmaTxStream,
-    rx_stream: ImuDmaRxStream,
-    mut cs: ImuCsPin,
-) -> Icm42688pDmaContext<ImuDmaTxTransfer, ImuDmaRxTransfer, ImuCsPin> {
-    tx_buffer_1[0] = 0x2E | 0x80;
-    tx_buffer_2[0] = 0x2E | 0x80;
+pub async fn get_fifo_count(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+) -> u16 {
+    let mut buf = [0x2E | 0x80, 0x00, 0x00];
+    spi_dev.transfer_in_place(&mut buf).await.ok();
+    u16::from_be_bytes([buf[1], buf[2]])
+}
 
-    let (tx, rx) = spi.use_dma().txrx();
-    let mut rx_transfer = stm32f4xx_hal::dma::Transfer::init_peripheral_to_memory(
-        rx_stream,
-        rx,
-        rx_buffer_1,
-        Some(3),
-        None,
-        stm32f4xx_hal::dma::config::DmaConfig::default()
-            .memory_increment(true)
-            .transfer_complete_interrupt(true),
-    );
-    let mut tx_transfer = stm32f4xx_hal::dma::Transfer::init_memory_to_peripheral(
-        tx_stream,
-        tx,
-        tx_buffer_1,
-        Some(3),
-        None,
-        stm32f4xx_hal::dma::config::DmaConfig::default().memory_increment(true),
-    );
-
-    // start
-    cs.set_low();
-    // starting rx_transfer before tx_transfer seems more robust
-    // (works with even large delay between the two calls)
-    rx_transfer.start(|_| {});
-    tx_transfer.start(|_| {});
-
-    let icm42688p_dma_context = Icm42688pDmaContext {
-        tx_transfer,
-        rx_transfer,
-        rx_buffer: Some(rx_buffer_2),
-        tx_buffer: Some(tx_buffer_2),
-        cs,
-    };
-    icm42688p_dma_context
+pub async fn get_fifo_sample(
+    spi_dev: &mut embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<'static, Async>,
+        Output<'static>,
+        NoDelay,
+    >,
+) -> [u8; 17] {
+    let mut buf: [u8; 17] = [0x00; 17];
+    buf[0] = 0x30 | 0x80;
+    spi_dev.transfer_in_place(&mut buf).await.ok();
+    buf
 }
